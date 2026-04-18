@@ -13,7 +13,7 @@ function App() {
   const dispatch = useDispatch();
   const { activeView, activeSpace, activeRoom, searchQuery, isSettings } =
     useSelector((state) => state.app);
-  const { isAuthenticated, initialized, loading } = useSelector((state) => state.auth);
+  const { isAuthenticated, initialized, loading, isLoggingOut } = useSelector((state) => state.auth);
 
   useEffect(() => {
     if (window.location.pathname !== "/") {
@@ -26,7 +26,7 @@ function App() {
 
   const currentView = isSettings ? "settings" : activeView;
 
-  if (!initialized) {
+  if (!initialized || isLoggingOut) {
     return (
       <div className="w-screen h-screen flex items-center justify-center bg-linear-to-br from-white via-indigo-100 to-blue-200">
         <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-500 rounded-full animate-spin" />

@@ -112,7 +112,13 @@ export const register = createAsyncThunk(
 );
 
 export const logout = createAsyncThunk("auth/logout", async () => {
-  // Fire-and-forget: clear client state immediately, let API run in background
+  // Gọi API logout TRƯỚC khi xóa token
+  try {
+    await authService.logout();
+  } catch {
+    // Ignore API errors — vẫn tiếp tục xóa local state
+  }
+
   clearAccessToken();
   localStorage.removeItem("refreshToken");
   localStorage.removeItem("auth_user");
@@ -120,12 +126,6 @@ export const logout = createAsyncThunk("auth/logout", async () => {
   localStorage.removeItem("userBio");
   localStorage.removeItem("userAvatar");
   localStorage.removeItem("usernameColor");
-
-  try {
-    authService.logout();
-  } catch {
-    // Ignore API errors
-  }
 });
 
 export const fetchProfile = createAsyncThunk(
@@ -206,7 +206,16 @@ const authSlice = createSlice({
         state.loading = false;
         state.error = action.payload;
       })
+      .addCase(logout.pending, (state) => {
+        state.isLoggingOut = true;
+      })
       .addCase(logout.fulfilled, (state) => {
+        state.isLoggingOut = false;
+        state.user = null;
+        state.isAuthenticated = false;
+      })
+      .addCase(logout.rejected, (state) => {
+        state.isLoggingOut = false;
         state.user = null;
         state.isAuthenticated = false;
       })
