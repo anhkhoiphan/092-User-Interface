@@ -1,0 +1,141 @@
+/* 
+ * VinClassroom UI Theme Configuration
+ * 
+ * Color Palette:
+ * - Primary (#a3a6ff): Brand beacon, active states, high-priority actions
+ * - Secondary (#69f6b8): Success, collaboration, online status
+ * - Tertiary (#ac8aff): AI assistance, creative modes
+ * - Surface Dark (#060e20): Deep navy canvas
+ * - Surface Light (#f0f2f5): Light canvas
+ *
+ * To change colors, edit the hex values below only.
+ * All components use CSS variables via Tailwind arbitrary properties.
+ */
+
+/* ===================== DARK MODE ===================== */
+.dark {
+  /* === SURFACE COLORS === */
+  --bg-surface: #1a1f35;
+  --bg-surface-secondary: #222842;
+  --bg-surface-tertiary: #2a3050;
+
+  /* === BORDER COLORS === */
+  --border-primary: #333a5c;
+  --border-secondary: #3d4568;
+
+  /* === TEXT COLORS === */
+  --text-primary: #e8ecf4;
+  --text-secondary: #b0bdd0;
+  --text-tertiary: #8899b5;
+  --text-muted: #6b7a99;
+
+  /* === BRAND COLORS === */
+  --primary: #a3a6ff;
+  --primary-hover: #8b8fff;
+  --primary-active: #a3a6ff26;
+
+  --secondary: #69f6b8;
+  --secondary-hover: #4de8a0;
+  --secondary-active: #69f6b826;
+
+  --tertiary: #ac8aff;
+  --tertiary-hover: #9670f0;
+  --tertiary-active: #ac8aff26;
+
+  /* === INPUT COLORS === */
+  --input-bg: #222842;
+  --input-border: #333a5c;
+  --input-text: #e8ecf4;
+  --input-placeholder: #8899b5;
+
+  /* === HOVER COLORS === */
+  --hover-primary: #2a3050;
+  --hover-secondary: #333a5c;
+
+  /* === CARD/BG COLORS === */
+  --card-bg: #222842;
+  --card-bg-secondary: #2a3050;
+
+  /* === STATUS COLORS === */
+  --online: #69f6b8;
+  --offline: #8899b5;
+  --notification: #a3a6ff;
+  --danger: #ff6b6b;
+
+  /* === SCROLLBAR === */
+  --scrollbar-thumb: #3d4568;
+  --scrollbar-thumb-hover: #4d5578;
+}
+
+/* ===================== LIGHT MODE ===================== */
+.light {
+  /* === SURFACE COLORS === */
+  --bg-surface: #f8f9fb;
+  --bg-surface-secondary: #ffffff;
+  --bg-surface-tertiary: #f0f2f5;
+
+  /* === BORDER COLORS === */
+  --border-primary: #e2e6ed;
+  --border-secondary: #d1d5db;
+
+  /* === TEXT COLORS === */
+  --text-primary: #1a1a2e;
+  --text-secondary: #4a5568;
+  --text-tertiary: #718096;
+  --text-muted: #a0aec0;
+
+  /* === BRAND COLORS === */
+  --primary: #6366f1;
+  --primary-hover: #4f46e5;
+  --primary-active: #6366f11a;
+
+  --secondary: #10b981;
+  --secondary-hover: #059669;
+  --secondary-active: #10b9811a;
+
+  --tertiary: #8b5cf6;
+  --tertiary-hover: #7c3aed;
+  --tertiary-active: #8b5cf61a;
+
+  /* === INPUT COLORS === */
+  --input-bg: #ffffff;
+  --input-border: #e2e6ed;
+  --input-text: #1a1a2e;
+  --input-placeholder: #a0aec0;
+
+  /* === HOVER COLORS === */
+  --hover-primary: #e8ecf4;
+  --hover-secondary: #f0f2f5;
+
+  /* === CARD/BG COLORS === */
+  --card-bg: #ffffff;
+  --card-bg-secondary: #f8f9fb;
+
+  /* === STATUS COLORS === */
+  --online: #10b981;
+  --offline: #a0aec0;
+  --notification: #6366f1;
+  --danger: #ef4444;
+
+  /* === SCROLLBAR === */
+  --scrollbar-thumb: #d1d5db;
+  --scrollbar-thumb-hover: #9ca3af;
+}
+
+/* ===================== SCROLLBAR STYLES ===================== */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
