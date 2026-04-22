@@ -5,7 +5,7 @@ import DMList from "./roomlist/DMList";
 import SpaceRoomList from "./roomlist/SpaceRoomList";
 import { setActiveRoom, setSearchQuery } from "../store/slices/appSlice";
 
-function RoomList({ activeView, activeSpace, activeRoom, searchQuery }) {
+function RoomList({ activeView, activeSpace, activeRoom, searchQuery, createTab, onCreateTabChange }) {
   const dispatch = useDispatch();
   const appState = useSelector((state) => state.app);
 
@@ -23,7 +23,7 @@ function RoomList({ activeView, activeSpace, activeRoom, searchQuery }) {
   };
 
   if (view === "createSpace") {
-    return <CreateSpaceGuide />;
+    return <CreateSpaceGuide onTabChange={onCreateTabChange} />;
   }
 
   if (view === "settings") {

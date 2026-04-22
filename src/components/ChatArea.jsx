@@ -24,7 +24,7 @@ import {
 import { addMessage } from "../store/slices/messageSlice";
 import socketService from "../services/socket.service";
 
-function ChatArea({ activeView, activeRoom }) {
+function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList, roomListCollapsed, memberListCollapsed }) {
   const dispatch = useDispatch();
   const { isDark } = useSelector((state) => state.theme);
   const { replyTo, editMessage, selectedUser, selectedDMUser } = useSelector(
@@ -435,6 +435,10 @@ function ChatArea({ activeView, activeRoom }) {
         isBotRoom={isBotRoom}
         isDM={isDM}
         dmUser={dmUser}
+        onToggleRoomList={onToggleRoomList}
+        onToggleMemberList={onToggleMemberList}
+        roomListCollapsed={roomListCollapsed}
+        memberListCollapsed={memberListCollapsed}
       />
       {/* User Profile Popup */}
       {selectedUser && (

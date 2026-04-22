@@ -7,7 +7,8 @@ import {
   RecentFiles,
   UserProfilePopup,
 } from "./memberlist/index.js";
-import { CreateSpaceTips } from "./createspace/index.js";
+import { FiUserPlus } from "react-icons/fi";
+import { CreateSpaceTips, CreateAgentTips } from "./createspace/index.js";
 import { SettingsShortcuts } from "./settings/index.js";
 import {
   setMemberSearchQuery,
@@ -15,7 +16,7 @@ import {
   clearSelectedMember,
 } from "../store/slices/memberSlice";
 
-function MemberList({ activeView, activeRoom }) {
+function MemberList({ activeView, activeRoom, createTab }) {
   const dispatch = useDispatch();
   const { isDark } = useSelector((state) => state.theme);
   const { memberSearchQuery, selectedMember } = useSelector(
@@ -80,7 +81,7 @@ function MemberList({ activeView, activeRoom }) {
 
   // CreateSpace view
   if (view === "createSpace") {
-    return <CreateSpaceTips isDark={isDark} />;
+    return createTab === "agent" ? <CreateAgentTips isDark={isDark} /> : <CreateSpaceTips isDark={isDark} />;
   }
 
   // Settings view
@@ -112,11 +113,21 @@ function MemberList({ activeView, activeRoom }) {
         className="p-4 border-b"
         style={{ borderColor: "var(--border-primary)" }}
       >
-        <div
-          className="text-sm font-semibold uppercase tracking-wider mb-3"
-          style={{ color: "var(--text-primary)" }}
-        >
-          Thành viên
+        <div className="flex items-center justify-between mb-3">
+          <div
+            className="text-sm font-semibold uppercase tracking-wider"
+            style={{ color: "var(--text-primary)" }}
+          >
+            Thành viên
+          </div>
+          <button
+            onClick={() => console.log("Add member clicked")}
+            className="p-1.5 rounded hover:opacity-70 transition-opacity cursor-pointer"
+            style={{ color: "var(--text-muted)" }}
+            title="Thêm thành viên"
+          >
+            <FiUserPlus size={14} />
+          </button>
         </div>
         <input
           type="text"

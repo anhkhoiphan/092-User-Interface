@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { FiSidebar } from "react-icons/fi";
 import { getUserColor } from "../../utils/userColor";
 
 function getInitials(name) {
@@ -63,7 +64,17 @@ function UserAvatar({ name, avatarUrl, isOnline, isDark, isBot, color }) {
   );
 }
 
-function ChatHeader({ isDark, activeRoom, isBotRoom, isDM, dmUser }) {
+function ChatHeader({
+  isDark,
+  activeRoom,
+  isBotRoom,
+  isDM,
+  dmUser,
+  onToggleRoomList,
+  onToggleMemberList,
+  roomListCollapsed,
+  memberListCollapsed,
+}) {
   const hasNoSelection = isDM && !dmUser;
 
   const headerTitle = hasNoSelection
@@ -102,7 +113,7 @@ function ChatHeader({ isDark, activeRoom, isBotRoom, isDM, dmUser }) {
           isBot={isBotRoom}
         />
       )}
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <div
           className="text-[15px] font-semibold flex items-center gap-1.5 truncate"
           style={{ color: "var(--text-primary)" }}
@@ -115,6 +126,32 @@ function ChatHeader({ isDark, activeRoom, isBotRoom, isDM, dmUser }) {
         >
           {headerSubtitle}
         </div>
+      </div>
+
+      <div className="flex items-center gap-0.5">
+        {/* Toggle RoomList */}
+        <button
+          onClick={onToggleRoomList}
+          className="p-1.5 rounded hover:opacity-70 transition-opacity cursor-pointer"
+          style={{
+            color: roomListCollapsed ? "var(--primary)" : "var(--text-muted)",
+          }}
+          title={roomListCollapsed ? "Hiện danh sách room" : "Ẩn danh sách room"}
+        >
+          <FiSidebar size={18} />
+        </button>
+
+        {/* Toggle MemberList */}
+        <button
+          onClick={onToggleMemberList}
+          className="p-1.5 rounded hover:opacity-70 transition-opacity cursor-pointer"
+          style={{
+            color: memberListCollapsed ? "var(--primary)" : "var(--text-muted)",
+          }}
+          title={memberListCollapsed ? "Hiện danh sách thành viên" : "Ẩn danh sách thành viên"}
+        >
+          <FiSidebar size={18} style={{ transform: "scaleX(-1)" }} />
+        </button>
       </div>
     </div>
   );

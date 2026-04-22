@@ -1,15 +1,38 @@
+import { useState } from "react";
 import { useSelector } from "react-redux";
-import { FiCheckCircle } from "react-icons/fi";
+import { FiPlusSquare, FiUserPlus, FiUsers } from "react-icons/fi";
 
-function CreateSpaceGuide() {
+function CreateSpaceGuide({ onTabChange }) {
   const { isDark } = useSelector((state) => state.theme);
+  const [activeTab, setActiveTab] = useState("space");
 
-  const steps = [
-    { num: 1, text: "Chọn icon cho space" },
-    { num: 2, text: "Nhập tên space" },
-    { num: 3, text: "Thêm mô tả (tùy chọn)" },
-    { num: 4, text: 'Nhấn "Tạo Space"' },
+  const menuItems = [
+    {
+      icon: FiPlusSquare,
+      title: "Tạo Space",
+      desc: "Tạo không gian mới",
+      tab: "space",
+    },
+    {
+      icon: FiUserPlus,
+      title: "Tạo Agent",
+      desc: "Tạo agent mới",
+      tab: "agent",
+    },
+    {
+      icon: FiUsers,
+      title: "Quản lý Agent",
+      desc: "Xem và quản lý các agent",
+      tab: "manageAgent",
+    },
   ];
+
+  const handleClick = (tab) => {
+    setActiveTab(tab);
+    if (onTabChange) {
+      onTabChange(tab);
+    }
+  };
 
   return (
     <div
@@ -27,40 +50,46 @@ function CreateSpaceGuide() {
           className="text-base font-semibold"
           style={{ color: "var(--text-primary)" }}
         >
-          Tạo Space
+          Tạo mới
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-4">
-        <div
-          className="p-4 rounded-lg"
-          style={{ background: "var(--card-bg-secondary)" }}
-        >
-          <div className="text-4xl mb-3" style={{ color: "var(--primary)" }}>
-            <FiCheckCircle size={40} />
-          </div>
-          <div
-            className="text-sm font-medium mb-2"
-            style={{ color: "var(--text-primary)" }}
-          >
-            Các bước tạo Space
-          </div>
-          <ol
-            className="text-xs space-y-2"
-            style={{ color: "var(--text-secondary)" }}
-          >
-            {steps.map((step) => (
-              <li key={step.num} className="flex gap-2">
-                <span
-                  className="font-medium"
-                  style={{ color: "var(--primary)" }}
+      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+        {menuItems.map((item) => {
+          const IconComponent = item.icon;
+          const isActive = activeTab === item.tab;
+          return (
+            <div
+              key={item.title}
+              className="p-3 rounded-lg cursor-pointer flex items-start gap-3"
+              style={{
+                background: isActive
+                  ? "var(--primary-active)"
+                  : "transparent",
+                color: isActive ? "var(--primary)" : "var(--text-primary)",
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive)
+                  e.currentTarget.style.background = "var(--hover-primary)";
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive)
+                  e.currentTarget.style.background = "transparent";
+              }}
+              onClick={() => handleClick(item.tab)}
+            >
+              <IconComponent size={18} className="mt-0.5 flex-shrink-0" />
+              <div>
+                <div className="text-sm font-medium">{item.title}</div>
+                <div
+                  className="text-xs mt-1"
+                  style={{ color: "var(--text-secondary)" }}
                 >
-                  {step.num}.
-                </span>
-                {step.text}
-              </li>
-            ))}
-          </ol>
-        </div>
+                  {item.desc}
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
