@@ -43,7 +43,7 @@ function UserAvatar({ name, avatarUrl, isOnline, isDark, isBot, color }) {
   return (
     <div className="relative flex-shrink-0">
       <div
-        className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold overflow-hidden"
+        className="w-10 h-10 rounded-lg flex items-center justify-center text-sm font-semibold overflow-hidden"
         style={{
           background: userColor,
           color: textColor,
@@ -96,7 +96,7 @@ function NoResultsState({ isDark }) {
   return (
     <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
       <div
-        className="w-14 h-14 rounded-full flex items-center justify-center mb-3"
+        className="w-14 h-14 rounded-lg flex items-center justify-center mb-3"
         style={{
           background: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)",
         }}
@@ -120,7 +120,7 @@ function EmptyState({ isDark, onStartChat }) {
   return (
     <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
       <div
-        className="w-16 h-16 rounded-full flex items-center justify-center mb-4"
+        className="w-16 h-16 rounded-lg flex items-center justify-center mb-4"
         style={{
           background: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)",
         }}

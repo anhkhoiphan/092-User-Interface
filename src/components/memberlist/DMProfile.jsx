@@ -41,7 +41,7 @@ function UserAvatar({ name, avatarUrl, isOnline, isDark, isBot, color }) {
   return (
     <div className="relative shrink-0">
       <div
-        className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-semibold overflow-hidden"
+        className="w-16 h-16 rounded-lg flex items-center justify-center text-2xl font-semibold overflow-hidden"
         style={{
           background: userColor,
           color: textColor,
@@ -60,15 +60,6 @@ function UserAvatar({ name, avatarUrl, isOnline, isDark, isBot, color }) {
           getInitials(name)
         )}
       </div>
-      {!isBot && (
-        <div
-          className="absolute bottom-0.5 right-0.5 w-3 h-3 rounded-full border-2"
-          style={{
-            borderColor: isDark ? "var(--bg-surface-secondary)" : "#fff",
-            background: isOnline ? "var(--online)" : "var(--offline)",
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -90,7 +81,8 @@ function DMProfile({ isDark, dmUser }) {
       .getUserProfile(dmUser.id)
       .then(({ data }) => {
         const color = data?.user?.color || data?.color || null;
-        const displayName = data?.user?.display_name || data?.display_name || null;
+        const displayName =
+          data?.user?.display_name || data?.display_name || null;
         const avatarUrl = data?.user?.avatar_url || data?.avatar_url || null;
         if (mounted && color) {
           setProfileColor(color);
@@ -105,7 +97,7 @@ function DMProfile({ isDark, dmUser }) {
                 ...(displayName && { display_name: displayName }),
                 ...(avatarUrl && { avatar_url: avatarUrl }),
               },
-            })
+            }),
           );
         }
       })

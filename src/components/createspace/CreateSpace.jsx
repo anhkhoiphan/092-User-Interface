@@ -43,7 +43,9 @@ import {
   PiFire,
   PiSnowflake,
 } from "react-icons/pi";
+import { FiSearch, FiX } from "react-icons/fi";
 import { cancelCreateSpace } from "../../store/slices/appSlice";
+import { dmService } from "../../services/dm.service";
 
 const spaceIcons = [
   { id: "graduation", icon: PiGraduationCap, label: "Tốt nghiệp" },
@@ -95,6 +97,64 @@ function CreateSpace() {
   const [spaceName, setSpaceName] = useState("");
   const [spaceIcon, setSpaceIcon] = useState(spaceIcons[0].id);
   const [spaceDescription, setSpaceDescription] = useState("");
+  
+  // Members state
+  const [members, setMembers] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const searchTimeoutRef = useState(null);
+
+  // Search users - only trigger on Enter key
+  const handleSearch = async (query) => {
+    setSearchQuery(query);
+    
+    if (!query.trim()) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+  };
+
+  const handleSearchKeyDown = async (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const query = searchQuery.trim();
+      
+      if (!query) {
+        setSearchResults([]);
+        return;
+      }
+      
+      setIsSearching(true);
+      try {
+        const { data } = await dmService.searchUsers(query);
+        const users = (data.users || []).map((user) => ({
+          id: user.id,
+          name: user.display_name || user.email || "Unknown",
+          avatar: user.avatar_url || null,
+          email: user.email || "",
+        }));
+        setSearchResults(users);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    }
+  };
+
+  // Add member
+  const addMember = (user) => {
+    if (!members.some((m) => m.id === user.id)) {
+      setMembers([...members, user]);
+    }
+  };
+
+  // Remove member
+  const removeMember = (userId) => {
+    setMembers((prev) => prev.filter((m) => m.id !== userId));
+  };
 
   const handleSubmit = () => {
     if (spaceName.trim()) {
@@ -106,6 +166,7 @@ function CreateSpace() {
         name: spaceName.trim(),
         icon: spaceIcon,
         description: spaceDescription.trim(),
+        members: members.map((m) => m.id),
         hasNotification: false,
       };
       console.log("Creating space:", newSpace);
@@ -239,6 +300,151 @@ function CreateSpace() {
                 (e.currentTarget.style.borderColor = "var(--input-border)")
               }
             />
+          </div>
+
+          {/* Members */}
+          <div>
+            <h3
+              className="text-sm font-semibold mb-3"
+              style={{ color: "var(--text-primary)" }}
+            >
+              Thêm thành viên
+            </h3>
+            
+            {/* Search input */}
+            <div className="relative mb-3">
+              {isSearching ? (
+                <div className="absolute left-3 top-1/2 -translate-y-1/2">
+                  <div className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"
+                    style={{ borderColor: "var(--text-muted)", borderTopColor: "transparent" }}
+                  />
+                </div>
+              ) : (
+                <button
+                  onClick={() => handleSearchKeyDown({ key: 'Enter', preventDefault: () => {} })}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 hover:opacity-70 transition-opacity"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  <FiSearch size={16} />
+                </button>
+              )}
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => handleSearch(e.target.value)}
+                onKeyDown={handleSearchKeyDown}
+                placeholder="Nhập tên và nhấn Enter để tìm..."
+                className="w-full pl-9 pr-3 py-2 rounded-md text-sm border outline-none"
+                style={{
+                  background: "var(--input-bg)",
+                  borderColor: "var(--input-border)",
+                  color: "var(--input-text)",
+                }}
+                onFocus={(e) =>
+                  (e.currentTarget.style.borderColor = "var(--primary)")
+                }
+                onBlur={(e) =>
+                  (e.currentTarget.style.borderColor = "var(--input-border)")
+                }
+              />
+            </div>
+            
+            {/* Selected members - chips */}
+            {members.length > 0 && (
+              <div className="mb-3">
+                <div
+                  className="text-xs font-medium mb-2"
+                  style={{ color: "var(--text-secondary)" }}
+                >
+                  Đã chọn ({members.length})
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {members.map((member) => (
+                    <div
+                      key={member.id}
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm"
+                      style={{
+                        background: "var(--primary-active)",
+                        color: "var(--primary)",
+                      }}
+                    >
+                      <div
+                        className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold"
+                        style={{
+                          background: "var(--primary)",
+                          color: "#fff",
+                        }}
+                      >
+                        {member.name?.charAt(0)?.toUpperCase() || "?"}
+                      </div>
+                      <span className="font-medium">{member.name}</span>
+                      <button
+                        onClick={() => removeMember(member.id)}
+                        className="ml-1 hover:opacity-70"
+                      >
+                        <FiX size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Search results with checkbox - keep showing after select */}
+            {searchResults.length > 0 && (
+              <div>
+                <div
+                  className="text-xs font-medium mb-2"
+                  style={{ color: "var(--text-secondary)" }}
+                >
+                  Kết quả tìm kiếm
+                </div>
+                <div className="space-y-1">
+                  {searchResults.map((user) => {
+                    const isSelected = members.some((m) => m.id === user.id);
+                    return (
+                      <label
+                        key={user.id}
+                        className="flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer transition-colors hover:opacity-80"
+                      >
+                        <div
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold"
+                          style={{
+                            background: "var(--primary-active)",
+                            color: "var(--primary)",
+                          }}
+                        >
+                          {user.name?.charAt(0)?.toUpperCase() || "?"}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div
+                            className="text-sm font-medium truncate"
+                            style={{ color: "var(--text-primary)" }}
+                          >
+                            {user.name}
+                          </div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {
+                            if (isSelected) {
+                              removeMember(user.id);
+                            } else {
+                              addMember(user);
+                            }
+                          }}
+                          className="w-4 h-4 cursor-pointer"
+                          style={{
+                            accentColor: "var(--primary)",
+                          }}
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Preview */}

@@ -13,11 +13,11 @@ function ChatMessage({
   onShowProfile,
   isSending,
 }) {
-  const senderColor = getUserColor(msg.sender);
+  const senderColor = getUserColor(msg.sender, msg.color);
   const [showActions, setShowActions] = useState(false);
   const [reactions, setReactions] = useState(msg.reactions || []);
   const [showPicker, setShowPicker] = useState(false);
-  const isOwnMessage = msg.sender === "You";
+  const isOwnMessage = msg.isOwn;
 
   const handleAddReaction = (emoji) => {
     const existing = reactions.find((r) => r.emoji === emoji);
@@ -59,7 +59,7 @@ function ChatMessage({
       />
 
       <div
-        className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold shrink-0 cursor-pointer"
+        className="w-9 h-9 rounded-lg flex items-center justify-center text-sm font-semibold shrink-0 cursor-pointer"
         style={{
           background: msg.isBot ? "var(--tertiary-active)" : senderColor,
           color: msg.isBot
@@ -166,7 +166,7 @@ function TypingIndicator({ isDark }) {
   return (
     <div className="flex gap-3 px-3 py-2">
       <div
-        className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold shrink-0"
+        className="w-9 h-9 rounded-lg flex items-center justify-center text-sm font-semibold shrink-0"
         style={{
           background: "var(--tertiary-active)",
           color: "var(--tertiary)",
@@ -205,7 +205,7 @@ function MessageSkeleton({ isDark, width = "75%", showSecondLine = true }) {
   return (
     <div className="flex gap-3 px-3 py-3 animate-pulse">
       <div
-        className="w-9 h-9 rounded-full flex-shrink-0"
+        className="w-9 h-9 rounded-lg flex-shrink-0"
         style={{
           background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)",
         }}
@@ -254,7 +254,7 @@ function EmptyChatState({ dmUser, isDark, hasNoSelection }) {
   return (
     <div className="flex flex-col items-center justify-center px-6 text-center">
       <div
-        className="w-20 h-20 rounded-full flex items-center justify-center mb-5"
+        className="w-20 h-20 rounded-lg flex items-center justify-center mb-5"
         style={{
           background: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)",
         }}

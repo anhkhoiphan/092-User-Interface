@@ -31,7 +31,7 @@ function UserAvatar({ name, avatarUrl, isOnline, isDark, isBot, color }) {
   return (
     <div className="relative flex-shrink-0">
       <div
-        className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold overflow-hidden"
+        className="w-9 h-9 rounded-lg flex items-center justify-center text-sm font-semibold overflow-hidden"
         style={{
           background: userColor,
           color: textColor,

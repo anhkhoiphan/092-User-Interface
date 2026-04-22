@@ -108,7 +108,7 @@ const UserProfile = forwardRef(function UserProfile(_, ref) {
     >
       <div className="flex items-center gap-4">
         <div
-          className="w-14 h-14 rounded-full flex items-center justify-center text-xl font-semibold"
+          className="w-14 h-14 rounded-lg flex items-center justify-center text-xl font-semibold"
           style={{
             background: usernameColors.find((c) => c.value === usernameColor)?.hex || "var(--primary)",
             color: isDark ? "var(--bg-surface)" : "#fff",
@@ -198,7 +198,7 @@ const UserProfile = forwardRef(function UserProfile(_, ref) {
             <button
               key={`${color.value}-${usernameColor}`}
               onClick={() => handleColorChange(color.value)}
-              className="w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all"
+              className="w-8 h-8 rounded-lg flex items-center justify-center border-2 transition-all"
               style={{
                 background: color.hex,
                 borderColor:

@@ -55,7 +55,7 @@ function UserProfilePopup({
         {/* Avatar */}
         <div className="px-4 -mt-8">
           <div
-            className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-semibold border-4 relative"
+            className="w-16 h-16 rounded-lg flex items-center justify-center text-2xl font-semibold border-4 relative"
             style={{
               background: userColor,
               color: isDark ? "var(--bg-surface)" : "#fff",

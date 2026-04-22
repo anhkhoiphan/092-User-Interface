@@ -244,10 +244,15 @@ function ChatArea({ activeView, activeRoom }) {
   // Convert API messages to UI format
   const apiMessages = sortedDmMessages.map((msg) => {
     const isOwn = msg.sender_id === currentUser?.id;
-    const sender = isOwn ? "You" : (msg.sender?.display_name || "Unknown");
+    const sender = isOwn
+      ? (currentUser?.display_name || currentUser?.name || "Bạn")
+      : (msg.sender?.display_name || "Unknown");
     const avatar = isOwn
-      ? (currentUser?.name?.charAt(0).toUpperCase() || "Y")
+      ? (currentUser?.display_name?.charAt(0).toUpperCase() || currentUser?.name?.charAt(0).toUpperCase() || "B")
       : (msg.sender?.display_name?.charAt(0).toUpperCase() || "?");
+    const color = isOwn
+      ? (currentUser?.color || null)
+      : (msg.sender?.color || null);
 
     const date = new Date(msg.created_at);
     const timestamp = isNaN(date.getTime())
@@ -258,6 +263,7 @@ function ChatArea({ activeView, activeRoom }) {
       id: msg.id,
       sender,
       avatar,
+      color,
       timestamp,
       content: msg.content,
       isPinned: false,
@@ -323,8 +329,8 @@ function ChatArea({ activeView, activeRoom }) {
       const tempId = `temp-${Date.now()}`;
       const optimisticMsg = {
         id: tempId,
-        sender: "You",
-        avatar: currentUser?.name?.charAt(0).toUpperCase() || "Y",
+        sender: currentUser?.display_name || currentUser?.name || "Bạn",
+        avatar: currentUser?.display_name?.charAt(0).toUpperCase() || currentUser?.name?.charAt(0).toUpperCase() || "B",
         timestamp: new Date().toLocaleTimeString("vi-VN", {
           hour: "2-digit",
           minute: "2-digit",
@@ -357,7 +363,7 @@ function ChatArea({ activeView, activeRoom }) {
             created_at: optimisticMsg.created_at,
             sender: {
               id: currentUser?.id,
-              display_name: currentUser?.name || "You",
+              display_name: currentUser?.display_name || currentUser?.name || "Bạn",
               avatar_url: currentUser?.avatar || null,
             },
             pending: true,
@@ -458,9 +464,9 @@ function ChatArea({ activeView, activeRoom }) {
           dispatch(cancelReply());
         }}
         onShowProfile={(senderName) => {
-          if (isDM && dmUser && senderName !== "You") {
+          if (isDM && dmUser && senderName !== (currentUser?.display_name || currentUser?.name)) {
             dispatch(setSelectedUser(dmUser));
-          } else if (senderName !== "You") {
+          } else if (senderName !== (currentUser?.display_name || currentUser?.name)) {
             dispatch(
               setSelectedUser({
                 id: senderName.toLowerCase(),

@@ -13,7 +13,7 @@ function MemberItem({ isDark, member, onClick }) {
       onClick={() => onClick?.()}
     >
       <div
-        className="w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-semibold flex-shrink-0 relative"
+        className="w-8 h-8 rounded-lg flex items-center justify-center text-[13px] font-semibold flex-shrink-0 relative"
         style={{
           background: member.isBot ? "var(--tertiary-active)" : memberColor,
           color: member.isBot

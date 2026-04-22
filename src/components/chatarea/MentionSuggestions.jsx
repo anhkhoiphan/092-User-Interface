@@ -85,7 +85,7 @@ function MentionSuggestions({
           onMouseEnter={() => setSelectedIndex(index)}
         >
           <div
-            className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-semibold flex-shrink-0"
             style={{
               background: user.isBot
                 ? "var(--tertiary-active)"
