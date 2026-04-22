@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { getUserColor } from "../../utils/userColor";
 
 function getInitials(name) {
@@ -25,6 +26,7 @@ function UserAvatar({ name, avatarUrl, isOnline, isDark, isBot, color }) {
 
   const avatarEmoji = isEmoji(avatarUrl) ? avatarUrl : null;
   const imageUrl = avatarUrl && !avatarEmoji ? avatarUrl : null;
+  const [imgError, setImgError] = useState(false);
 
   return (
     <div className="relative flex-shrink-0">
@@ -37,14 +39,12 @@ function UserAvatar({ name, avatarUrl, isOnline, isDark, isBot, color }) {
       >
         {avatarEmoji ? (
           <span className="text-base">{avatarEmoji}</span>
-        ) : imageUrl ? (
+        ) : imageUrl && !imgError ? (
           <img
             src={imageUrl}
             alt={name}
             className="w-full h-full object-cover"
-            onError={(e) => {
-              e.target.style.display = "none";
-            }}
+            onError={() => setImgError(true)}
           />
         ) : (
           getInitials(name)

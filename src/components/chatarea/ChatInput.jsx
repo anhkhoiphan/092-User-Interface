@@ -29,6 +29,8 @@ function ChatInput({
   onCancelEdit,
   onSend,
   onEdit,
+  onTyping,
+  onStopTyping,
 }) {
   const [showMentions, setShowMentions] = useState(false);
   const [mentionFilter, setMentionFilter] = useState("");
@@ -112,6 +114,9 @@ function ChatInput({
     checkForMention();
     const plainText = getPlainText();
     setIsEmpty(plainText.trim() === "");
+    if (onTyping && plainText.trim().length > 0) {
+      onTyping();
+    }
   };
 
   const handleMentionSelect = (user) => {
@@ -189,6 +194,7 @@ function ChatInput({
         if (onCancelReply) onCancelReply();
       }
       setShowMentions(false);
+      if (onStopTyping) onStopTyping();
     }
   };
 

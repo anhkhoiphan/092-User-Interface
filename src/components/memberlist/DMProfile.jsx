@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
+import { useDispatch } from "react-redux";
 import SharedFile from "./SharedFile";
 import { getUserColor } from "../../utils/userColor";
 import { dmService } from "../../services/dm.service";
+import { updateUserProfile } from "../../store/slices/dmSlice";
 import {
   FiMail,
   FiFileText,
@@ -30,11 +32,11 @@ function isEmoji(str) {
 
 function UserAvatar({ name, avatarUrl, isOnline, isDark, isBot, color }) {
   const userColor = getUserColor(name, color);
-  console.log("color", color);
   const textColor = isDark ? "var(--bg-surface)" : "#fff";
 
   const avatarEmoji = isEmoji(avatarUrl) ? avatarUrl : null;
   const imageUrl = avatarUrl && !avatarEmoji ? avatarUrl : null;
+  const [imgError, setImgError] = useState(false);
 
   return (
     <div className="relative shrink-0">
@@ -47,14 +49,12 @@ function UserAvatar({ name, avatarUrl, isOnline, isDark, isBot, color }) {
       >
         {avatarEmoji ? (
           <span className="text-3xl">{avatarEmoji}</span>
-        ) : imageUrl ? (
+        ) : imageUrl && !imgError ? (
           <img
             src={imageUrl}
             alt={name}
             className="w-full h-full object-cover"
-            onError={(e) => {
-              e.target.style.display = "none";
-            }}
+            onError={() => setImgError(true)}
           />
         ) : (
           getInitials(name)
@@ -90,8 +90,23 @@ function DMProfile({ isDark, dmUser }) {
       .getUserProfile(dmUser.id)
       .then(({ data }) => {
         const color = data?.user?.color || data?.color || null;
+        const displayName = data?.user?.display_name || data?.display_name || null;
+        const avatarUrl = data?.user?.avatar_url || data?.avatar_url || null;
         if (mounted && color) {
           setProfileColor(color);
+        }
+        // Update Redux store with user profile info
+        if (color || displayName || avatarUrl) {
+          dispatch(
+            updateUserProfile({
+              userId: dmUser.id,
+              updates: {
+                ...(color && { color }),
+                ...(displayName && { display_name: displayName }),
+                ...(avatarUrl && { avatar_url: avatarUrl }),
+              },
+            })
+          );
         }
       })
       .catch(() => {});

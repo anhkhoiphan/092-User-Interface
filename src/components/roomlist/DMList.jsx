@@ -3,6 +3,10 @@ import { useSelector, useDispatch } from "react-redux";
 import { FiMessageSquare, FiUserPlus, FiSearch } from "react-icons/fi";
 import { setActiveRoom } from "../../store/slices/appSlice";
 import { setSelectedDMUser } from "../../store/slices/chatSlice";
+import {
+  setActiveConversation,
+  fetchMessages,
+} from "../../store/slices/dmSlice";
 import { getUserColor } from "../../utils/userColor";
 import { DMListHeader, DMListSection } from "./DMListComponents";
 import { useDMList } from "../../hooks/useDMList";
@@ -19,12 +23,13 @@ function getInitials(name) {
 
 function isEmoji(str) {
   if (!str) return false;
-  // Basic emoji detection: any non-BMP character or common emoji ranges
   return /\p{Emoji}/u.test(str) && str.length <= 2;
 }
 
 function UserAvatar({ name, avatarUrl, isOnline, isDark, isBot, color }) {
-  const userColor = isBot ? "var(--tertiary-active)" : getUserColor(name, color);
+  const userColor = isBot
+    ? "var(--tertiary-active)"
+    : getUserColor(name, color);
   const textColor = isBot
     ? "var(--tertiary)"
     : isDark
@@ -33,6 +38,7 @@ function UserAvatar({ name, avatarUrl, isOnline, isDark, isBot, color }) {
 
   const avatarEmoji = isEmoji(avatarUrl) ? avatarUrl : null;
   const imageUrl = avatarUrl && !avatarEmoji ? avatarUrl : null;
+  const [imgError, setImgError] = useState(false);
 
   return (
     <div className="relative flex-shrink-0">
@@ -45,14 +51,12 @@ function UserAvatar({ name, avatarUrl, isOnline, isDark, isBot, color }) {
       >
         {avatarEmoji ? (
           <span className="text-lg">{avatarEmoji}</span>
-        ) : imageUrl ? (
+        ) : imageUrl && !imgError ? (
           <img
             src={imageUrl}
             alt={name}
             className="w-full h-full object-cover"
-            onError={(e) => {
-              e.target.style.display = "none";
-            }}
+            onError={() => setImgError(true)}
           />
         ) : (
           getInitials(name)
@@ -105,10 +109,7 @@ function NoResultsState({ isDark }) {
       >
         Không tìm thấy kết quả
       </div>
-      <div
-        className="text-xs"
-        style={{ color: "var(--text-muted)" }}
-      >
+      <div className="text-xs" style={{ color: "var(--text-muted)" }}>
         Thử tìm kiếm với từ khóa khác nhé
       </div>
     </div>
@@ -154,14 +155,7 @@ function EmptyState({ isDark, onStartChat }) {
   );
 }
 
-function DMItem({
-  dm,
-  isDark,
-  isActive,
-  onClick,
-  onAddFriend,
-  isOnline,
-}) {
+function DMItem({ dm, isDark, isActive, onClick, onAddFriend, isOnline }) {
   const dmColor = getUserColor(dm.name, dm.color);
   const [isHovered, setIsHovered] = useState(false);
 
@@ -195,6 +189,7 @@ function DMItem({
           <div className="text-sm font-medium" style={{ color: dmColor }}>
             {dm.name}
           </div>
+          {/* unread badge removed */}
         </div>
         <div
           className="text-xs mt-0.5 truncate"
@@ -202,6 +197,7 @@ function DMItem({
             color: dm.hasNewMessage
               ? "var(--text-primary)"
               : "var(--text-secondary)",
+            fontWeight: dm.hasNewMessage ? 500 : 400,
           }}
         >
           {dm.lastMessage || (dm.isBot ? "Trợ lý AI" : "Bắt đầu trò chuyện")}
@@ -214,6 +210,7 @@ function DMItem({
 function DMList({ activeRoom, setActiveRoom: setActiveRoomProp }) {
   const dispatch = useDispatch();
   const { isDark } = useSelector((state) => state.theme);
+  const { loading: dmLoading } = useSelector((state) => state.dm);
   const [sentRequests, setSentRequests] = useState([]);
 
   const {
@@ -221,14 +218,47 @@ function DMList({ activeRoom, setActiveRoom: setActiveRoomProp }) {
     onlineStatus,
     searchQuery,
     setSearchQuery,
-    isLoading,
+    isLoading: hookLoading,
     isSearching,
     isSearchingActive,
     getUserOnlineStatus,
   } = useDMList();
 
-  const handleNavigateToChat = (user) => {
+  const isLoading = hookLoading || dmLoading;
+
+  const handleNavigateToChat = async (user) => {
     dispatch(setSelectedDMUser(user));
+
+    if (user.isBot) {
+      // Bot chat — use legacy flow
+      if (setActiveRoomProp) {
+        setActiveRoomProp(user.id);
+      } else {
+        dispatch(setActiveRoom(user.id));
+      }
+      return;
+    }
+
+    // If user has a conversation object, use it directly
+    if (user.conversation) {
+      dispatch(setActiveConversation(user.conversation));
+      dispatch(
+        fetchMessages({
+          conversationId: user.conversation.id,
+          page: 1,
+          limit: 50,
+        }),
+      );
+      if (setActiveRoomProp) {
+        setActiveRoomProp(user.conversation.id);
+      } else {
+        dispatch(setActiveRoom(user.conversation.id));
+      }
+      return;
+    }
+
+    // Lazy create: don't create conversation yet, just set the user as active
+    // Conversation will be created when first message is sent
     if (setActiveRoomProp) {
       setActiveRoomProp(user.id);
     } else {
@@ -238,7 +268,7 @@ function DMList({ activeRoom, setActiveRoom: setActiveRoomProp }) {
 
   const handleAddFriend = (user) => {
     setSentRequests([...sentRequests, user.id]);
-    console.log("Sent friend request to:", user.name);
+    // Sent friend request
   };
 
   const handleFocusSearch = () => {
@@ -281,7 +311,6 @@ function DMList({ activeRoom, setActiveRoom: setActiveRoomProp }) {
                 onClick={() => handleNavigateToChat(dm)}
                 onAddFriend={handleAddFriend}
                 isOnline={getUserOnlineStatus(dm.userId).online}
-
               />
             ))}
           </DMListSection>

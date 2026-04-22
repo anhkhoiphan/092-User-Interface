@@ -1,40 +1,36 @@
 import api from "./api";
 
 export const dmService = {
-  // Get all DM conversations
-  getConversations: () => api.get("/dms"),
+  // === Conversations ===
 
-  // Get DM conversation with user
-  getConversation: (userId) => api.get(`/dms/${userId}`),
+  /** Create or get existing conversation with a user */
+  createOrGetConversation: (userId) => api.post("/dms", { userId }),
 
-  // Send DM message
-  sendMessage: (userId, data) => api.post(`/dms/${userId}/messages`, data),
+  /** Get list of conversations */
+  getConversations: (params) => api.get("/dms", { params }),
 
-  // Get DM messages
-  getMessages: (userId, params) =>
-    api.get(`/dms/${userId}/messages`, { params }),
+  // === Messages ===
 
-  // Search users for DM
+  /** Get messages in a conversation */
+  getMessages: (conversationId, params) =>
+    api.get(`/dms/${conversationId}/messages`, { params }),
+
+  /** Send message via REST (fallback when WS unavailable) */
+  sendMessage: (conversationId, data) =>
+    api.post(`/dms/${conversationId}/messages`, data),
+
+  /** Mark conversation as read */
+  markAsRead: (conversationId) => api.post(`/dms/${conversationId}/read`),
+
+  // === Block ===
+
+  blockUser: (userId) => api.post(`/dms/block/${userId}`),
+  unblockUser: (userId) => api.delete(`/dms/block/${userId}`),
+  getBlockedUsers: () => api.get("/dms/blocked/list"),
+
+  // === User Search ===
+
   searchUsers: (query) => api.get("/users/search", { params: { q: query } }),
-
-  // Get user profile
   getUserProfile: (userId) => api.get(`/users/${userId}`),
-
-  // Get user online status
   getUserStatus: (userId) => api.get(`/users/${userId}/status`),
-
-  // Mark DM as read
-  markAsRead: (userId) => api.post(`/dms/${userId}/read`),
-
-  // Get unread DM count
-  getUnreadCount: () => api.get("/dms/unread-count"),
-
-  // Block user
-  blockUser: (userId) => api.post(`/users/${userId}/block`),
-
-  // Unblock user
-  unblockUser: (userId) => api.delete(`/users/${userId}/block`),
-
-  // Get blocked users
-  getBlockedUsers: () => api.get("/users/blocked"),
 };

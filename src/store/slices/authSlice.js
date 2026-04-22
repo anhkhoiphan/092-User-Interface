@@ -2,6 +2,7 @@ import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
 import { authService } from "../../services/auth.service";
 import { setAccessToken, clearAccessToken } from "../../services/api";
+import socketService from "../../services/socket.service";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:3000/api";
@@ -16,7 +17,7 @@ export const initializeAuth = createAsyncThunk("auth/initialize", async () => {
   }
 
   const savedUser = localStorage.getItem("auth_user");
-  const savedToken = sessionStorage.getItem("accessToken");
+  const savedToken = localStorage.getItem("access_token");
   const refreshToken = localStorage.getItem("refreshToken");
 
   // Còn cả accessToken và user trong cùng tab (chưa đóng tab)
@@ -34,18 +35,14 @@ export const initializeAuth = createAsyncThunk("auth/initialize", async () => {
         { refreshToken },
         { withCredentials: true },
       );
-      console.log("[initializeAuth] refresh response:", data);
+      // Initialize auth refresh response
       const user = JSON.parse(savedUser);
       setAccessToken(data.accessToken);
       localStorage.setItem("refreshToken", data.refreshToken);
       localStorage.setItem("auth_user", JSON.stringify(user));
       return { user, isAuthenticated: true };
     } catch (err) {
-      console.error(
-        "[initializeAuth] silent refresh failed:",
-        err.response?.status,
-        err.response?.data || err.message,
-      );
+      // Initialize auth silent refresh failed
       clearAccessToken();
       localStorage.removeItem("refreshToken");
       localStorage.removeItem("auth_user");
@@ -118,6 +115,9 @@ export const logout = createAsyncThunk("auth/logout", async () => {
   } catch {
     // Ignore API errors — vẫn tiếp tục xóa local state
   }
+
+  // Disconnect socket
+  socketService.disconnect();
 
   clearAccessToken();
   localStorage.removeItem("refreshToken");

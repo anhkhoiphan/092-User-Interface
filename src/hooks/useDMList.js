@@ -1,8 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useSelector, useDispatch } from "react-redux";
 import { dmService } from "../services/dm.service";
 import socketService from "../services/socket.service";
+import {
+  fetchConversations,
+  updateConversationLastMessage,
+  setUnreadCount,
+  updateUserStatus,
+  updateUserProfile,
+} from "../store/slices/dmSlice";
 
-const POLLING_INTERVAL = 30000; // 30s polling fallback for status
+const POLLING_INTERVAL = 30000;
 
 const STUDYBOT = {
   id: "studybot",
@@ -20,61 +28,118 @@ const STUDYBOT = {
 function matchesStudyBot(query) {
   if (!query) return false;
   const q = query.toLowerCase();
-  const keywords = ["studybot", "trợ lý", "trợ ly", "ai", "bot", "học tập", "study"];
+  const keywords = [
+    "studybot",
+    "trợ lý",
+    "trợ ly",
+    "ai",
+    "bot",
+    "học tập",
+    "study",
+  ];
   return keywords.some((k) => q.includes(k));
 }
 
 export function useDMList() {
-  const [conversations, setConversations] = useState([]);
+  const dispatch = useDispatch();
+  const { conversations, onlineUsers } = useSelector((state) => state.dm);
+
   const [searchResults, setSearchResults] = useState([]);
-  const [onlineStatus, setOnlineStatus] = useState({}); // { [userId]: { online, lastSeen } }
   const [searchQuery, setSearchQuery] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState(null);
+  const [onlineStatus, setOnlineStatus] = useState({}); // { [userId]: { online, lastSeen } }
 
   const statusPollingRef = useRef(null);
+  const processedMessageIds = useRef(new Set());
 
   // Fetch conversations on mount
   useEffect(() => {
-    let mounted = true;
+    dispatch(fetchConversations());
+  }, [dispatch]);
 
-    const fetchConversations = async () => {
-      try {
-        const { data } = await dmService.getConversations();
-        if (!mounted) return;
+  // Listen to realtime updates via WebSocket
+  useEffect(() => {
+    // New DM message
+    const handleNewDM = (data) => {
+      if (!data?.id) return;
+      if (processedMessageIds.current.has(data.id)) return;
+      processedMessageIds.current.add(data.id);
+      setTimeout(() => processedMessageIds.current.delete(data.id), 60000);
 
-        // Normalize API response
-        const normalized = (data.conversations || data || []).map((conv) => ({
-          id: conv.id || conv.user_id,
-          userId: conv.user_id || conv.id,
-          name: conv.display_name || conv.name || "Unknown",
-          avatar: conv.avatar_url || conv.avatar || null,
-          color: conv.color || null,
-          lastMessage: conv.last_message || "",
-          hasNewMessage: conv.unread_count > 0,
-          unreadCount: conv.unread_count || 0,
-          isBot: conv.is_bot || false,
-          email: conv.email || "",
-          mutualFriends: conv.mutual_friends || 0,
-        }));
+      const conversationId = data.conversation_id || data.conversationId;
+      dispatch(
+        updateConversationLastMessage({
+          conversationId,
+          message: {
+            id: data.id,
+            content: data.content,
+            created_at: data.created_at || data.timestamp,
+          },
+        }),
+      );
+    };
 
-        setConversations(normalized);
-      } catch (err) {
-        if (mounted) {
-          // Silently fail — show empty state instead of loading/error
-          setConversations([]);
-        }
+    // User status changed
+    const handleStatusChange = (data) => {
+      if (!data?.userId) return;
+      dispatch(updateUserStatus({ userId: data.userId, status: data.status }));
+      setOnlineStatus((prev) => ({
+        ...prev,
+        [data.userId]: {
+          online: data.status === "online",
+          lastSeen: data.lastSeen || prev[data.userId]?.lastSeen || null,
+        },
+      }));
+    };
+
+    // Online users list
+    const handleOnlineUsers = (data) => {
+      if (data?.users) {
+        // Update local online status map
+        const next = {};
+        data.users.forEach((uid) => {
+          next[uid] = { online: true, lastSeen: null };
+        });
+        setOnlineStatus((prev) => {
+          // Keep previous lastSeen for offline users
+          const merged = { ...prev };
+          Object.keys(merged).forEach((uid) => {
+            if (!next[uid]) merged[uid] = { ...merged[uid], online: false };
+          });
+          Object.keys(next).forEach((uid) => {
+            merged[uid] = next[uid];
+          });
+          return merged;
+        });
       }
     };
 
-    fetchConversations();
-    return () => {
-      mounted = false;
+    // Connected ack
+    const handleConnected = (data) => {
+      if (data?.onlineUsers) {
+        const next = {};
+        data.onlineUsers.forEach((uid) => {
+          next[uid] = { online: true, lastSeen: null };
+        });
+        setOnlineStatus(next);
+      }
     };
-  }, []);
 
-  // Search users via API only when searchQuery changes (triggered by Enter)
+    socketService.onNewDM(handleNewDM);
+    socketService.onUserStatusChanged(handleStatusChange);
+    socketService.onOnlineUsers(handleOnlineUsers);
+    socketService.on("connected", handleConnected);
+
+    return () => {
+      socketService.off("newDM", handleNewDM);
+      socketService.off("userStatusChanged", handleStatusChange);
+      socketService.off("onlineUsers", handleOnlineUsers);
+      socketService.off("connected", handleConnected);
+    };
+  }, [dispatch]);
+
+  // Search users via API
   useEffect(() => {
     if (!searchQuery.trim()) {
       setSearchResults([]);
@@ -105,18 +170,34 @@ export function useDMList() {
           bio: user.bio || "",
         }));
 
-        // Inject StudyBot into search results if query matches
         if (matchesStudyBot(searchQuery)) {
-          const hasStudyBot = normalized.some((u) => u.userId === STUDYBOT.userId);
+          const hasStudyBot = normalized.some(
+            (u) => u.userId === STUDYBOT.userId,
+          );
           if (!hasStudyBot) {
             normalized = [STUDYBOT, ...normalized];
           }
         }
 
+        // Update Redux store with user profile info (including color)
+        normalized.forEach((user) => {
+          if (user.color) {
+            dispatch(
+              updateUserProfile({
+                userId: user.userId,
+                updates: {
+                  color: user.color,
+                  display_name: user.name,
+                  avatar_url: user.avatar,
+                },
+              })
+            );
+          }
+        });
+
         setSearchResults(normalized);
       } catch (err) {
         if (mounted) {
-          // If API fails but query matches StudyBot, still show StudyBot
           if (matchesStudyBot(searchQuery)) {
             setSearchResults([STUDYBOT]);
           } else {
@@ -135,14 +216,12 @@ export function useDMList() {
     };
   }, [searchQuery]);
 
-  // Fetch online status for visible users
+  // Polling online status for visible users
   const fetchStatuses = useCallback(async (userIds) => {
     if (!userIds.length) return;
-
     const results = await Promise.allSettled(
-      userIds.map((id) => dmService.getUserStatus(id))
+      userIds.map((id) => dmService.getUserStatus(id)),
     );
-
     setOnlineStatus((prev) => {
       const next = { ...prev };
       results.forEach((result, idx) => {
@@ -155,11 +234,10 @@ export function useDMList() {
     });
   }, []);
 
-  // Initial status fetch + polling for visible users
   useEffect(() => {
     const visibleUserIds = searchQuery.trim()
       ? searchResults.map((u) => u.userId).filter(Boolean)
-      : conversations.map((c) => c.userId).filter(Boolean);
+      : conversations.map((c) => c.other_user?.id).filter(Boolean);
 
     if (!visibleUserIds.length) return;
 
@@ -179,50 +257,49 @@ export function useDMList() {
     };
   }, [conversations, searchResults, searchQuery, fetchStatuses]);
 
-  // Listen to realtime user status changes via WebSocket
-  useEffect(() => {
-    const handleStatusChange = (data) => {
-      if (!data?.userId) return;
-      setOnlineStatus((prev) => ({
-        ...prev,
-        [data.userId]: {
-          online: data.status === "online",
-          lastSeen: data.lastSeen || prev[data.userId]?.lastSeen || null,
-        },
-      }));
-    };
+  // Normalize conversations for UI
+  const normalizedConversations = conversations.map((conv) => ({
+      id: conv.id,
+      userId: conv.other_user?.id,
+      name: conv.other_user?.display_name || "Unknown",
+      avatar: conv.other_user?.avatar_url || null,
+      color: conv.other_user?.color || null,
+      lastMessage: conv.last_message?.content || "",
+      hasNewMessage: (conv.unread_count || 0) > 0,
+      unreadCount: conv.unread_count || 0,
+      isBot: false,
+      email: conv.other_user?.email || "",
+      mutualFriends: 0,
+      conversation: conv,
+  }));
 
-    socketService.onUserStatusChanged(handleStatusChange);
-
-    return () => {
-      socketService.off("userStatusChanged", handleStatusChange);
-    };
-  }, []);
-
-  // Derived list: single unified list, no friend/non-friend split
   const filteredConversations = searchQuery.trim()
-    ? conversations.filter((dm) =>
-        dm.name.toLowerCase().includes(searchQuery.toLowerCase())
+    ? normalizedConversations.filter((dm) =>
+        dm.name.toLowerCase().includes(searchQuery.toLowerCase()),
       )
-    : conversations;
+    : normalizedConversations;
 
-  // Merge API search results with conversations for "global search"
   const globalSearchResults = searchQuery.trim()
     ? searchResults.map((user) => {
-        const existing = conversations.find((c) => c.userId === user.userId);
-        return existing || user;
+        const existing = normalizedConversations.find(
+          (c) => c.userId === user.userId,
+        );
+        // Merge: prefer search result data (has color) but keep conversation data if available
+        return existing
+          ? { ...user, ...existing, color: user.color || existing.color }
+          : user;
       })
     : [];
 
   const isSearchingActive = searchQuery.trim().length > 0;
 
   return {
-    conversations,
+    conversations: normalizedConversations,
     items: isSearchingActive ? globalSearchResults : filteredConversations,
     onlineStatus,
     searchQuery,
     setSearchQuery,
-    isLoading,
+    isLoading: false, // handled by Redux
     isSearching,
     error,
     isSearchingActive,

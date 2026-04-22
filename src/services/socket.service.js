@@ -6,244 +6,306 @@ class SocketService {
   constructor() {
     this.socket = null;
     this.listeners = new Map();
+    this._connected = false;
   }
 
-  // Connect to WebSocket server
+  // ==================== Connection ====================
+
   connect() {
     if (this.socket?.connected) return;
 
-    const token = localStorage.getItem("authToken");
-    this.socket = io(SOCKET_URL, {
+    const token = localStorage.getItem("access_token");
+    if (!token) {
+      // No access token, skipping connect
+      return;
+    }
+
+    // Connecting with token
+
+    this.socket = io(`${SOCKET_URL}/chat`, {
       auth: { token },
-      transports: ["websocket"],
+      transports: ["websocket", "polling"],
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionAttempts: 5,
     });
 
     this.socket.on("connect", () => {
-      console.log("Socket connected:", this.socket.id);
+      // Socket connected
+      this._connected = true;
     });
 
-    this.socket.on("disconnect", () => {
-      console.log("Socket disconnected");
+    this.socket.on("disconnect", (reason) => {
+      // Socket disconnected
+      this._connected = false;
+    });
+
+    this.socket.on("connect_error", (error) => {
+      // Socket connect error
     });
 
     this.socket.on("reconnect", (attemptNumber) => {
-      console.log("Socket reconnected after", attemptNumber, "attempts");
+      // Socket reconnected
     });
 
     this.socket.on("reconnect_error", (error) => {
-      console.error("Socket reconnection error:", error);
+      // Socket reconnection error
     });
 
     this.socket.on("error", (error) => {
-      console.error("Socket error:", error);
+      // Socket error
+    });
+
+    // Connection ack from server
+    this.socket.on("connected", (data) => {
+      // Socket server ack
     });
   }
 
-  // Disconnect from WebSocket server
   disconnect() {
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
+      this._connected = false;
     }
   }
 
-  // Join a room
-  joinRoom(roomId) {
-    this.socket?.emit("joinRoom", roomId);
-  }
-
-  // Leave a room
-  leaveRoom(roomId) {
-    this.socket?.emit("leaveRoom", roomId);
-  }
-
-  // Send message via socket
-  sendMessage(data) {
-    this.socket?.emit("sendMessage", data);
-  }
-
-  // Update online status
-  updateStatus(status) {
-    this.socket?.emit("updateStatus", status);
-  }
-
-  // ==================== Message Events ====================
-
-  // Listen for new message
-  onNewMessage(callback) {
-    this.socket?.on("newMessage", callback);
-  }
-
-  // Listen for message deleted
-  onMessageDeleted(callback) {
-    this.socket?.on("messageDeleted", callback);
-  }
-
-  // Listen for message updated/edited
-  onMessageUpdated(callback) {
-    this.socket?.on("messageUpdated", callback);
-  }
-
-  // Listen for message pinned
-  onMessagePinned(callback) {
-    this.socket?.on("messagePinned", callback);
-  }
-
-  // Listen for message unpinned
-  onMessageUnpinned(callback) {
-    this.socket?.on("messageUnpinned", callback);
-  }
-
-  // Listen for reaction added
-  onReactionAdded(callback) {
-    this.socket?.on("reactionAdded", callback);
-  }
-
-  // Listen for reaction removed
-  onReactionRemoved(callback) {
-    this.socket?.on("reactionRemoved", callback);
-  }
-
-  // ==================== Typing Events ====================
-
-  // Listen for typing indicator
-  onTyping(callback) {
-    this.socket?.on("typing", callback);
-  }
-
-  // Listen for stop typing
-  onStopTyping(callback) {
-    this.socket?.on("stopTyping", callback);
-  }
-
-  // Emit typing event
-  emitTyping(roomId) {
-    this.socket?.emit("typing", roomId);
-  }
-
-  // Emit stop typing event
-  emitStopTyping(roomId) {
-    this.socket?.emit("stopTyping", roomId);
-  }
-
-  // ==================== Room/Space Events ====================
-
-  // Listen for user joined
-  onUserJoined(callback) {
-    this.socket?.on("userJoined", callback);
-  }
-
-  // Listen for user left
-  onUserLeft(callback) {
-    this.socket?.on("userLeft", callback);
-  }
-
-  // Listen for member joined space
-  onMemberJoinedSpace(callback) {
-    this.socket?.on("memberJoinedSpace", callback);
-  }
-
-  // Listen for member left space
-  onMemberLeftSpace(callback) {
-    this.socket?.on("memberLeftSpace", callback);
-  }
-
-  // Listen for room created
-  onRoomCreated(callback) {
-    this.socket?.on("roomCreated", callback);
-  }
-
-  // Listen for room updated
-  onRoomUpdated(callback) {
-    this.socket?.on("roomUpdated", callback);
-  }
-
-  // Listen for room deleted
-  onRoomDeleted(callback) {
-    this.socket?.on("roomDeleted", callback);
-  }
-
-  // ==================== User Status Events ====================
-
-  // Listen for user online status change
-  onUserStatusChanged(callback) {
-    this.socket?.on("userStatusChanged", callback);
-  }
-
-  // Listen for user profile updated
-  onUserProfileUpdated(callback) {
-    this.socket?.on("userProfileUpdated", callback);
-  }
-
-  // ==================== DM Events ====================
-
-  // Listen for new DM message
-  onNewDM(callback) {
-    this.socket?.on("newDM", callback);
-  }
-
-  // Listen for DM read receipt
-  onDMRead(callback) {
-    this.socket?.on("dmRead", callback);
-  }
-
-  // ==================== Notification Events ====================
-
-  // Listen for notification
-  onNotification(callback) {
-    this.socket?.on("notification", callback);
-  }
-
-  // Listen for unread count update
-  onUnreadCountUpdate(callback) {
-    this.socket?.on("unreadCountUpdate", callback);
-  }
-
-  // ==================== File Events ====================
-
-  // Listen for file upload progress
-  onFileUploadProgress(callback) {
-    this.socket?.on("fileUploadProgress", callback);
-  }
-
-  // Listen for file upload complete
-  onFileUploadComplete(callback) {
-    this.socket?.on("fileUploadComplete", callback);
-  }
-
-  // Listen for file upload error
-  onFileUploadError(callback) {
-    this.socket?.on("fileUploadError", callback);
-  }
-
-  // ==================== Listener Management ====================
-
-  // Remove specific listener
-  off(event, callback) {
-    this.socket?.off(event, callback);
-  }
-
-  // Remove all listeners for an event
-  offEvent(event) {
-    this.socket?.off(event);
-  }
-
-  // Remove all listeners
-  removeAllListeners() {
-    this.socket?.removeAllListeners();
-  }
-
-  // Check if connected
   isConnected() {
     return this.socket?.connected || false;
   }
 
-  // Get socket ID
   getId() {
     return this.socket?.id || null;
+  }
+
+  // ==================== DM Room Events ====================
+
+  joinDM(conversationId) {
+    this.socket?.emit("joinDM", { conversationId });
+  }
+
+  leaveDM(conversationId) {
+    this.socket?.emit("leaveDM", { conversationId });
+  }
+
+  sendDM(conversationId, content) {
+    this.socket?.emit("sendDM", { conversationId, content });
+  }
+
+  dmTyping(conversationId, isTyping) {
+    this.socket?.emit("dmTyping", { conversationId, isTyping });
+  }
+
+  markDMRead(conversationId) {
+    this.socket?.emit("markDMRead", { conversationId });
+  }
+
+  // ==================== Status Events ====================
+
+  setStatus(status) {
+    this.socket?.emit("setStatus", { status });
+  }
+
+  getOnlineUsers() {
+    this.socket?.emit("getOnlineUsers");
+  }
+
+  // ==================== Notification Events ====================
+
+  markNotificationRead(notificationId) {
+    this.socket?.emit("markNotificationRead", { notificationId });
+  }
+
+  getUnreadCount() {
+    this.socket?.emit("getUnreadCount");
+  }
+
+  // ==================== Room/Space Events (legacy) ====================
+
+  joinRoom(roomId) {
+    this.socket?.emit("joinRoom", roomId);
+  }
+
+  leaveRoom(roomId) {
+    this.socket?.emit("leaveRoom", roomId);
+  }
+
+  sendMessage(data) {
+    this.socket?.emit("sendMessage", data);
+  }
+
+  updateStatus(status) {
+    this.socket?.emit("updateStatus", status);
+  }
+
+  emitTyping(roomId) {
+    this.socket?.emit("typing", roomId);
+  }
+
+  emitStopTyping(roomId) {
+    this.socket?.emit("stopTyping", roomId);
+  }
+
+  // ==================== Listener Management ====================
+
+  on(event, callback) {
+    this.socket?.on(event, callback);
+  }
+
+  off(event, callback) {
+    this.socket?.off(event, callback);
+  }
+
+  offEvent(event) {
+    this.socket?.off(event);
+  }
+
+  removeAllListeners() {
+    this.socket?.removeAllListeners();
+  }
+
+  // ==================== DM-specific Listeners ====================
+
+  onJoinedDM(callback) {
+    this.socket?.on("joinedDM", callback);
+  }
+
+  onLeftDM(callback) {
+    this.socket?.on("leftDM", callback);
+  }
+
+  onNewDM(callback) {
+    this.socket?.on("newDM", callback);
+  }
+
+  onDmSent(callback) {
+    this.socket?.on("dmSent", callback);
+  }
+
+  onDmTyping(callback) {
+    this.socket?.on("dmTyping", callback);
+  }
+
+  onDmRead(callback) {
+    this.socket?.on("dmRead", callback);
+  }
+
+  onDmMarkedRead(callback) {
+    this.socket?.on("dmMarkedRead", callback);
+  }
+
+  // ==================== User Status Listeners ====================
+
+  onUserStatusChanged(callback) {
+    this.socket?.on("userStatusChanged", callback);
+  }
+
+  onStatusSet(callback) {
+    this.socket?.on("statusSet", callback);
+  }
+
+  onOnlineUsers(callback) {
+    this.socket?.on("onlineUsers", callback);
+  }
+
+  // ==================== Notification Listeners ====================
+
+  onNewNotification(callback) {
+    this.socket?.on("newNotification", callback);
+  }
+
+  onNotificationsMarkedRead(callback) {
+    this.socket?.on("notificationsMarkedRead", callback);
+  }
+
+  onUnreadCountUpdate(callback) {
+    this.socket?.on("unreadCount", callback);
+  }
+
+  // ==================== Legacy Listeners ====================
+
+  onNewMessage(callback) {
+    this.socket?.on("newMessage", callback);
+  }
+
+  onMessageDeleted(callback) {
+    this.socket?.on("messageDeleted", callback);
+  }
+
+  onMessageUpdated(callback) {
+    this.socket?.on("messageUpdated", callback);
+  }
+
+  onMessagePinned(callback) {
+    this.socket?.on("messagePinned", callback);
+  }
+
+  onMessageUnpinned(callback) {
+    this.socket?.on("messageUnpinned", callback);
+  }
+
+  onReactionAdded(callback) {
+    this.socket?.on("reactionAdded", callback);
+  }
+
+  onReactionRemoved(callback) {
+    this.socket?.on("reactionRemoved", callback);
+  }
+
+  onTyping(callback) {
+    this.socket?.on("typing", callback);
+  }
+
+  onStopTyping(callback) {
+    this.socket?.on("stopTyping", callback);
+  }
+
+  onUserJoined(callback) {
+    this.socket?.on("userJoined", callback);
+  }
+
+  onUserLeft(callback) {
+    this.socket?.on("userLeft", callback);
+  }
+
+  onMemberJoinedSpace(callback) {
+    this.socket?.on("memberJoinedSpace", callback);
+  }
+
+  onMemberLeftSpace(callback) {
+    this.socket?.on("memberLeftSpace", callback);
+  }
+
+  onRoomCreated(callback) {
+    this.socket?.on("roomCreated", callback);
+  }
+
+  onRoomUpdated(callback) {
+    this.socket?.on("roomUpdated", callback);
+  }
+
+  onRoomDeleted(callback) {
+    this.socket?.on("roomDeleted", callback);
+  }
+
+  onUserProfileUpdated(callback) {
+    this.socket?.on("userProfileUpdated", callback);
+  }
+
+  onNotification(callback) {
+    this.socket?.on("notification", callback);
+  }
+
+  onFileUploadProgress(callback) {
+    this.socket?.on("fileUploadProgress", callback);
+  }
+
+  onFileUploadComplete(callback) {
+    this.socket?.on("fileUploadComplete", callback);
+  }
+
+  onFileUploadError(callback) {
+    this.socket?.on("fileUploadError", callback);
   }
 }
 

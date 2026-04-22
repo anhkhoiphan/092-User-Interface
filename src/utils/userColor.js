@@ -20,6 +20,11 @@ export function getUserColor(name, colorName) {
 
   // Use the color name from user profile if available
   if (colorName) {
+    // If it's already a hex code, use it directly
+    if (colorName.startsWith("#")) {
+      return colorName;
+    }
+    // Otherwise look up in color name map
     return colorNameMap[colorName] || colorName;
   }
 

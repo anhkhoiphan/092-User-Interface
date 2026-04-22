@@ -13,22 +13,117 @@ const api = axios.create({
 });
 
 let accessToken = typeof window !== "undefined"
-  ? sessionStorage.getItem("accessToken")
+  ? localStorage.getItem("access_token")
   : null;
+
+let refreshTimer = null;
+
+// Parse JWT token to get expiration time
+function parseJwt(token) {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch {
+    return null;
+  }
+}
+
+// Schedule token refresh before expiration
+function scheduleTokenRefresh(token) {
+  // Clear existing timer
+  if (refreshTimer) {
+    clearTimeout(refreshTimer);
+    refreshTimer = null;
+  }
+
+  if (!token) return;
+
+  const decoded = parseJwt(token);
+  if (!decoded?.exp) return;
+
+  const expiresAt = decoded.exp * 1000; // Convert to milliseconds
+  const now = Date.now();
+  const refreshBefore = 60 * 1000; // Refresh 60 seconds before expiration
+  const timeUntilRefresh = expiresAt - now - refreshBefore;
+
+  if (timeUntilRefresh <= 0) {
+    // Token already expired or about to expire, refresh immediately
+    silentRefresh();
+    return;
+  }
+
+  refreshTimer = setTimeout(() => {
+    silentRefresh();
+  }, timeUntilRefresh);
+}
+
+// Silent refresh token
+async function silentRefresh() {
+  try {
+    const rawToken = typeof window !== "undefined"
+      ? localStorage.getItem("refreshToken")
+      : null;
+
+    let refreshToken = rawToken;
+    if (rawToken && rawToken.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(rawToken);
+        if (parsed && typeof parsed === "object" && parsed.refreshToken) {
+          refreshToken = parsed.refreshToken;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!refreshToken) {
+      clearAccessToken();
+      return;
+    }
+
+    const { data } = await axios.post(
+      `${API_BASE_URL}/auth/refresh`,
+      { refreshToken },
+      { withCredentials: true }
+    );
+
+    setAccessToken(data.accessToken);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("refreshToken", data.refreshToken);
+    }
+  } catch {
+    clearAccessToken();
+    if (typeof window !== "undefined") {
+      window.location.reload();
+    }
+  }
+}
 
 export const setAccessToken = (token) => {
   accessToken = token;
   if (token && typeof window !== "undefined") {
-    sessionStorage.setItem("accessToken", token);
+    localStorage.setItem("access_token", token);
+    scheduleTokenRefresh(token);
   } else if (typeof window !== "undefined") {
-    sessionStorage.removeItem("accessToken");
+    localStorage.removeItem("access_token");
+    if (refreshTimer) {
+      clearTimeout(refreshTimer);
+      refreshTimer = null;
+    }
   }
 };
 
 export const clearAccessToken = () => {
   accessToken = null;
   if (typeof window !== "undefined") {
-    sessionStorage.removeItem("accessToken");
+    localStorage.removeItem("access_token");
   }
 };
 

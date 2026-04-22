@@ -5,6 +5,7 @@ import chatReducer from "./slices/chatSlice";
 import memberReducer from "./slices/memberSlice";
 import messageReducer from "./slices/messageSlice";
 import authReducer from "./slices/authSlice";
+import dmReducer from "./slices/dmSlice";
 
 export const store = configureStore({
   reducer: {
@@ -14,5 +15,6 @@ export const store = configureStore({
     member: memberReducer,
     message: messageReducer,
     auth: authReducer,
+    dm: dmReducer,
   },
 });

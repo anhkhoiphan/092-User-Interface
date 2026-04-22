@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { messages, directMessages, rooms } from "../data/mockData";
 import { ChatHeader, ChatMessages, ChatInput } from "./chatarea/index.js";
@@ -12,17 +12,17 @@ import {
   setSelectedUser,
   clearSelectedUser,
 } from "../store/slices/chatSlice";
+import {
+  fetchMessages,
+  addMessage as addDMMessage,
+  setTyping,
+  clearTyping,
+  setActiveConversation,
+  markConversationAsRead,
+  createOrGetConversation,
+} from "../store/slices/dmSlice";
 import { addMessage } from "../store/slices/messageSlice";
-
-function getInitials(name) {
-  if (!name) return "?";
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-}
+import socketService from "../services/socket.service";
 
 function ChatArea({ activeView, activeRoom }) {
   const dispatch = useDispatch();
@@ -30,25 +30,50 @@ function ChatArea({ activeView, activeRoom }) {
   const { replyTo, editMessage, selectedUser, selectedDMUser } = useSelector(
     (state) => state.chat,
   );
+  const { user: currentUser } = useSelector((state) => state.auth);
+  const {
+    messages: dmMessagesMap,
+    activeConversationId,
+    activeConversation,
+    typing: typingMap,
+    messagesLoading,
+  } = useSelector((state) => state.dm);
   const appState = useSelector((state) => state.app);
 
   const room = activeRoom || appState.activeRoom;
   const view = activeView || appState.activeView;
 
   const [dmUser, setDmUser] = useState(null);
+  const [isTyping, setIsTypingState] = useState(false);
+  const [sendingMessages, setSendingMessages] = useState({}); // { [tempId]: { content, timestamp } }
+  const typingTimeoutRef = useRef(null);
+  const processedMessageIds = useRef(new Set());
 
   const allRoomIds = Object.values(rooms).flat().map((r) => r.id);
   const isBotRoom = room === "tro-ly-ai";
   const isDM = (view === "messages") || (room && !allRoomIds.includes(room) && !isBotRoom);
 
-  // Build dmUser from selectedDMUser or fallback
+  // Build dmUser from selectedDMUser or activeConversation
   useEffect(() => {
     if (!isDM || !room) {
       setDmUser(null);
       return;
     }
 
-    if (selectedDMUser) {
+    if (activeConversation?.other_user) {
+      const ou = activeConversation.other_user;
+      setDmUser({
+        id: ou.id,
+        name: ou.display_name || "Unknown",
+        avatar: ou.avatar_url || null,
+        color: ou.color || null,
+        isOnline: ou.status === "online",
+        isFriend: true,
+        email: ou.email || "",
+        bio: ou.bio || "",
+        isBot: false,
+      });
+    } else if (selectedDMUser) {
       setDmUser({
         id: selectedDMUser.id || selectedDMUser.userId,
         name: selectedDMUser.name || "Unknown",
@@ -61,7 +86,6 @@ function ChatArea({ activeView, activeRoom }) {
         isBot: selectedDMUser.isBot || false,
       });
     } else {
-      // Fallback if no selectedDMUser
       setDmUser({
         id: room,
         name: room,
@@ -74,15 +98,190 @@ function ChatArea({ activeView, activeRoom }) {
         isBot: false,
       });
     }
-  }, [room, isDM, selectedDMUser]);
+  }, [room, isDM, selectedDMUser, activeConversation]);
 
-  // Get all user messages object to avoid creating new array in selector
+  // When DM room changes, set active conversation and fetch messages
+  useEffect(() => {
+    if (!isDM || !room) return;
+
+    // If we have an activeConversation matching this room, use it
+    if (activeConversation?.id === room) {
+      dispatch(fetchMessages({ conversationId: room, page: 1, limit: 50 }));
+      socketService.joinDM(room);
+      dispatch(markConversationAsRead(room));
+      return;
+    }
+
+    // Otherwise try to find conversation by userId in conversations list
+    // This is handled by DMList when clicking a user
+  }, [isDM, room, activeConversation, dispatch]);
+
+  // Join/leave DM via WebSocket
+  useEffect(() => {
+    if (!isDM || !activeConversationId) return;
+
+    socketService.joinDM(activeConversationId);
+    dispatch(markConversationAsRead(activeConversationId));
+
+    return () => {
+      socketService.leaveDM(activeConversationId);
+    };
+  }, [isDM, activeConversationId, dispatch]);
+
+  // Listen to WebSocket events for this DM
+  useEffect(() => {
+    if (!isDM || !activeConversationId) return;
+
+    const handleNewDM = (data) => {
+      // Received newDM from server
+      if (!data?.id) return;
+      if (processedMessageIds.current.has(data.id)) return;
+      processedMessageIds.current.add(data.id);
+      setTimeout(() => processedMessageIds.current.delete(data.id), 60000);
+
+      const conversationId = data.conversation_id || data.conversationId;
+      if (conversationId === activeConversationId) {
+        // Remove from sendingMessages if exists
+        setSendingMessages((prev) => {
+          const next = { ...prev };
+          Object.keys(next).forEach((key) => {
+            if (next[key].content === data.content) {
+              delete next[key];
+            }
+          });
+          return next;
+        });
+        dispatch(
+          addDMMessage({
+            conversationId,
+            message: {
+              id: data.id,
+              conversation_id: conversationId,
+              sender_id: data.sender_id,
+              content: data.content,
+              is_read: data.is_read ?? false,
+              created_at: data.created_at || data.timestamp,
+              sender: data.sender,
+            },
+          })
+        );
+      }
+    };
+
+    const handleDmSent = (data) => {
+      // Received dmSent from server
+      if (data.success && data.message) {
+        // Remove from sendingMessages if exists
+        setSendingMessages((prev) => {
+          const next = { ...prev };
+          Object.keys(next).forEach((key) => {
+            if (next[key].content === data.message.content) {
+              delete next[key];
+            }
+          });
+          return next;
+        });
+        dispatch(
+          addDMMessage({
+            conversationId: activeConversationId,
+            message: {
+              ...data.message,
+              conversation_id: activeConversationId,
+            },
+          })
+        );
+      }
+    };
+
+    const handleDmTyping = (data) => {
+      if (data.conversationId === activeConversationId) {
+        if (data.isTyping) {
+          dispatch(
+            setTyping({
+              conversationId: data.conversationId,
+              userId: data.userId,
+              isTyping: true,
+            })
+          );
+        } else {
+          dispatch(clearTyping(data.conversationId));
+        }
+      }
+    };
+
+    const handleDmRead = (data) => {
+      if (data.conversationId === activeConversationId) {
+        // Update read status for messages
+        // Backend handles this, we can refresh if needed
+      }
+    };
+
+    socketService.onNewDM(handleNewDM);
+    socketService.onDmSent(handleDmSent);
+    socketService.onDmTyping(handleDmTyping);
+    socketService.onDmRead(handleDmRead);
+
+    return () => {
+      socketService.off("newDM", handleNewDM);
+      socketService.off("dmSent", handleDmSent);
+      socketService.off("dmTyping", handleDmTyping);
+      socketService.off("dmRead", handleDmRead);
+    };
+  }, [isDM, activeConversationId, dispatch]);
+
+  // Build messages for display
+  const dmMessages = isDM && activeConversationId
+    ? (dmMessagesMap[activeConversationId] || [])
+    : [];
+
+  // Sort messages by created_at ascending (oldest first, newest last)
+  const sortedDmMessages = [...dmMessages].sort((a, b) => {
+    const dateA = new Date(a.created_at);
+    const dateB = new Date(b.created_at);
+    return dateA - dateB;
+  });
+
+  // Convert API messages to UI format
+  const apiMessages = sortedDmMessages.map((msg) => {
+    const isOwn = msg.sender_id === currentUser?.id;
+    const sender = isOwn ? "You" : (msg.sender?.display_name || "Unknown");
+    const avatar = isOwn
+      ? (currentUser?.name?.charAt(0).toUpperCase() || "Y")
+      : (msg.sender?.display_name?.charAt(0).toUpperCase() || "?");
+
+    const date = new Date(msg.created_at);
+    const timestamp = isNaN(date.getTime())
+      ? msg.created_at
+      : date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+
+    return {
+      id: msg.id,
+      sender,
+      avatar,
+      timestamp,
+      content: msg.content,
+      isPinned: false,
+      replyTo: null,
+      isOwn,
+      senderId: msg.sender_id,
+      is_read: msg.is_read,
+      created_at: msg.created_at,
+    };
+  });
+
+  // Combine with mock data for non-DM or fallback
+  const mockMessages = isDM ? directMessages[room] || [] : messages[room] || [];
   const userMessagesMap = useSelector((state) => state.message.userMessages);
   const userMessages = userMessagesMap[room] || [];
 
-  // Get mock messages and user-sent messages
-  const mockMessages = isDM ? directMessages[room] || [] : messages[room] || [];
-  const chatMessages = [...mockMessages, ...userMessages];
+  const chatMessages = isDM && activeConversationId
+    ? apiMessages
+    : [...mockMessages, ...userMessages];
+
+  // Typing indicator from other user
+  const otherTyping = isDM && activeConversationId
+    ? typingMap[activeConversationId]?.isTyping
+    : false;
 
   const placeholder =
     isBotRoom || (isDM && room === "studybot-dm")
@@ -91,12 +290,134 @@ function ChatArea({ activeView, activeRoom }) {
         ? `Nhắn tin cho ${dmUser.name}...`
         : "Nhắn tin cho nhóm học...";
 
-  // Settings view
-  if (view === "settings") {
-    return <SettingsView isDark={isDark} />;
-  }
+  // Handle send message via WebSocket
+  const handleSend = useCallback(async (content, replyToMsg, files) => {
+    if (!content.trim()) return;
 
-  // Normal chat view
+    if (isDM) {
+      let conversationId = activeConversationId;
+
+      // Lazy create conversation if not exists
+      if (!conversationId && dmUser?.id) {
+        try {
+          const result = await dispatch(
+            createOrGetConversation(dmUser.id)
+          ).unwrap();
+          if (result) {
+            conversationId = result.id;
+            dispatch(setActiveConversation(result));
+          }
+        } catch (err) {
+          // Failed to create conversation
+          return;
+        }
+      }
+
+      if (!conversationId) return;
+
+      // Send via WebSocket
+      // Send DM via WebSocket
+      socketService.sendDM(conversationId, content.trim());
+
+      // Optimistic UI
+      const tempId = `temp-${Date.now()}`;
+      const optimisticMsg = {
+        id: tempId,
+        sender: "You",
+        avatar: currentUser?.name?.charAt(0).toUpperCase() || "Y",
+        timestamp: new Date().toLocaleTimeString("vi-VN", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        content: content.trim(),
+        isPinned: false,
+        replyTo: replyToMsg || null,
+        isOwn: true,
+        senderId: currentUser?.id,
+        is_read: false,
+        created_at: new Date().toISOString(),
+        pending: true,
+      };
+
+      // Track sending message
+      setSendingMessages((prev) => ({
+        ...prev,
+        [tempId]: { content: content.trim(), timestamp: Date.now() },
+      }));
+
+      dispatch(
+        addDMMessage({
+          conversationId,
+          message: {
+            id: optimisticMsg.id,
+            conversation_id: conversationId,
+            sender_id: currentUser?.id,
+            content: content.trim(),
+            is_read: false,
+            created_at: optimisticMsg.created_at,
+            sender: {
+              id: currentUser?.id,
+              display_name: currentUser?.name || "You",
+              avatar_url: currentUser?.avatar || null,
+            },
+            pending: true,
+          },
+        })
+      );
+
+      // Stop typing
+      socketService.dmTyping(conversationId, false);
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+    } else {
+      // Legacy: dispatch to Redux for non-DM
+      const newMessage = {
+        id: Date.now(),
+        sender: "You",
+        avatar: "Y",
+        timestamp: new Date().toLocaleTimeString("vi-VN", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        content,
+        isPinned: false,
+        replyTo: replyToMsg || null,
+      };
+      dispatch(addMessage({ roomId: room, message: newMessage }));
+    }
+  }, [isDM, activeConversationId, dmUser, currentUser, dispatch, room]);
+
+  // Handle typing indicator
+  const handleTyping = useCallback(() => {
+    if (!isDM || !activeConversationId) return;
+
+    if (!isTyping) {
+      setIsTypingState(true);
+      socketService.dmTyping(activeConversationId, true);
+    }
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    typingTimeoutRef.current = setTimeout(() => {
+      setIsTypingState(false);
+      socketService.dmTyping(activeConversationId, false);
+    }, 3000);
+  }, [isDM, activeConversationId, isTyping]);
+
+  const handleStopTyping = useCallback(() => {
+    if (!isDM || !activeConversationId) return;
+    setIsTypingState(false);
+    socketService.dmTyping(activeConversationId, false);
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+  }, [isDM, activeConversationId]);
+
   return (
     <div
       className="flex-1 flex flex-col min-w-0"
@@ -126,6 +447,8 @@ function ChatArea({ activeView, activeRoom }) {
         chatMessages={chatMessages}
         dmUser={dmUser}
         hasNoSelection={isDM && !dmUser}
+        sendingMessages={sendingMessages}
+        isLoading={isDM && messagesLoading}
         onReply={(msg) => {
           dispatch(setReplyTo(msg));
           dispatch(cancelEdit());
@@ -135,7 +458,6 @@ function ChatArea({ activeView, activeRoom }) {
           dispatch(cancelReply());
         }}
         onShowProfile={(senderName) => {
-          // For DM, show the current dmUser if sender is not "You"
           if (isDM && dmUser && senderName !== "You") {
             dispatch(setSelectedUser(dmUser));
           } else if (senderName !== "You") {
@@ -153,7 +475,7 @@ function ChatArea({ activeView, activeRoom }) {
             );
           }
         }}
-        isTyping={isBotRoom || (isDM && room === "studybot-dm")}
+        isTyping={isBotRoom || (isDM && otherTyping)}
       />
       <ChatInput
         isDark={isDark}
@@ -162,47 +484,24 @@ function ChatArea({ activeView, activeRoom }) {
         onCancelReply={() => dispatch(cancelReply())}
         editMessage={editMessage}
         onCancelEdit={() => dispatch(cancelEdit())}
-        onSend={(content, replyToMsg, files) => {
-          const newMessage = {
-            id: Date.now(),
-            sender: "You",
-            avatar: "Y",
-            timestamp: new Date().toLocaleTimeString("vi-VN", {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-            content,
-            isPinned: false,
-            replyTo: replyToMsg || null,
-          };
-
-          // Add attachment info if files are selected
-          if (files && files.length > 0) {
-            const firstFile = files[0];
-            newMessage.hasAttachment = true;
-            newMessage.attachmentName = firstFile.name;
-            newMessage.attachmentType = firstFile.type.startsWith("image/")
-              ? "image"
-              : firstFile.type === "application/pdf"
-                ? "pdf"
-                : "other";
-            newMessage.attachmentUrl = firstFile.preview || firstFile.name;
-            newMessage.attachments = files.map((f) => ({
-              name: f.name,
-              type: f.type.startsWith("image/")
-                ? "image"
-                : f.type === "application/pdf"
-                  ? "pdf"
-                  : "other",
-              url: f.preview || f.name,
-            }));
-          }
-
-          dispatch(addMessage({ roomId: room, message: newMessage }));
-        }}
+        onSend={handleSend}
+        onTyping={handleTyping}
+        onStopTyping={handleStopTyping}
       />
     </div>
   );
 }
 
-export default ChatArea;
+function ChatAreaWrapper(props) {
+  const appState = useSelector((state) => state.app);
+  const { isDark } = useSelector((state) => state.theme);
+  const view = props.activeView || appState.activeView;
+
+  if (view === "settings") {
+    return <SettingsView isDark={isDark} />;
+  }
+
+  return <ChatArea {...props} />;
+}
+
+export default ChatAreaWrapper;

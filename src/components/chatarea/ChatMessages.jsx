@@ -5,7 +5,14 @@ import { renderMessageWithMentions } from "./MessageContent";
 import FileAttachment from "./FileAttachment";
 import { getUserColor } from "../../utils/userColor";
 
-function ChatMessage({ msg, isDark, onReply, onEdit, onShowProfile }) {
+function ChatMessage({
+  msg,
+  isDark,
+  onReply,
+  onEdit,
+  onShowProfile,
+  isSending,
+}) {
   const senderColor = getUserColor(msg.sender);
   const [showActions, setShowActions] = useState(false);
   const [reactions, setReactions] = useState(msg.reactions || []);
@@ -31,6 +38,7 @@ function ChatMessage({ msg, isDark, onReply, onEdit, onShowProfile }) {
       className="flex gap-3 px-3 py-2 rounded-lg transition-colors relative group"
       style={{
         background: showActions ? "var(--hover-primary)" : "transparent",
+        opacity: msg.pending ? 0.6 : 1,
       }}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => {
@@ -91,6 +99,17 @@ function ChatMessage({ msg, isDark, onReply, onEdit, onShowProfile }) {
           <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
             {msg.timestamp}
           </span>
+          {(msg.pending || isSending) && (
+            <span
+              className="text-[10px] italic ml-1"
+              style={{
+                color: "var(--primary)",
+                fontWeight: 500,
+              }}
+            >
+              · Đang gửi...
+            </span>
+          )}
         </div>
         {/* Reply preview below sender info */}
         <ReplyPreview replyTo={msg.replyTo} isDark={isDark} />
@@ -182,6 +201,55 @@ function TypingIndicator({ isDark }) {
   );
 }
 
+function MessageSkeleton({ isDark, width = "75%", showSecondLine = true }) {
+  return (
+    <div className="flex gap-3 px-3 py-3 animate-pulse">
+      <div
+        className="w-9 h-9 rounded-full flex-shrink-0"
+        style={{
+          background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)",
+        }}
+      />
+      <div className="flex-1 min-w-0 space-y-2">
+        <div className="flex items-center gap-2">
+          <div
+            className="h-3.5 w-24 rounded"
+            style={{
+              background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)",
+            }}
+          />
+          <div
+            className="h-3 w-12 rounded"
+            style={{
+              background: isDark
+                ? "rgba(255,255,255,0.06)"
+                : "rgba(0,0,0,0.05)",
+            }}
+          />
+        </div>
+        <div
+          className="h-4 rounded"
+          style={{
+            background: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)",
+            width: width,
+          }}
+        />
+        {showSecondLine && (
+          <div
+            className="h-4 rounded"
+            style={{
+              background: isDark
+                ? "rgba(255,255,255,0.08)"
+                : "rgba(0,0,0,0.06)",
+              width: "50%",
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 function EmptyChatState({ dmUser, isDark, hasNoSelection }) {
   return (
     <div className="flex flex-col items-center justify-center px-6 text-center">
@@ -238,9 +306,32 @@ function ChatMessages({
   onEdit,
   onShowProfile,
   hasNoSelection,
+  sendingMessages,
+  isLoading,
 }) {
   const messagesContainerRef = useRef(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const prevLoadingRef = useRef(isLoading);
+  const prevMessagesLengthRef = useRef(chatMessages.length);
+
+  // Auto scroll to bottom when loading finishes or new messages arrive
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    // Scroll to bottom when loading finishes
+    if (prevLoadingRef.current && !isLoading) {
+      container.scrollTop = container.scrollHeight;
+    }
+    
+    // Scroll to bottom when new messages added (but not when loading more)
+    if (chatMessages.length > prevMessagesLengthRef.current && !isLoadingMore) {
+      container.scrollTop = container.scrollHeight;
+    }
+
+    prevLoadingRef.current = isLoading;
+    prevMessagesLengthRef.current = chatMessages.length;
+  }, [isLoading, chatMessages.length, isLoadingMore]);
 
   // Handle scroll event to detect when user reaches the top
   const handleScroll = (e) => {
@@ -262,11 +353,27 @@ function ChatMessages({
   return (
     <div
       ref={messagesContainerRef}
-      className={`flex-1 p-4 ${isEmpty ? "flex items-center justify-center overflow-hidden" : "overflow-y-auto"}`}
+      className={`flex-1 p-4 ${isEmpty ? "flex items-center justify-center overflow-hidden" : ` ${isLoading ? "overflow-hidden" : "overflow-y-auto"}`}`}
       onScroll={isEmpty ? undefined : handleScroll}
     >
-      {isEmpty ? (
-        <EmptyChatState dmUser={dmUser} isDark={isDark} hasNoSelection={hasNoSelection} />
+      {isLoading ? (
+        <div className="flex flex-col gap-2 w-full min-h-full justify-end pb-2">
+          <MessageSkeleton isDark={isDark} width="60%" showSecondLine={false} />
+          <MessageSkeleton isDark={isDark} width="85%" />
+          <MessageSkeleton isDark={isDark} width="40%" showSecondLine={false} />
+          <MessageSkeleton isDark={isDark} width="70%" />
+          <MessageSkeleton isDark={isDark} width="55%" showSecondLine={false} />
+          <MessageSkeleton isDark={isDark} width="90%" />
+          <MessageSkeleton isDark={isDark} width="45%" showSecondLine={false} />
+          <MessageSkeleton isDark={isDark} width="78%" />
+          <MessageSkeleton isDark={isDark} width="35%" showSecondLine={false} />
+        </div>
+      ) : isEmpty ? (
+        <EmptyChatState
+          dmUser={dmUser}
+          isDark={isDark}
+          hasNoSelection={hasNoSelection}
+        />
       ) : (
         <div className="flex flex-col min-h-full justify-end gap-1 w-full">
           {/* Loading indicator at top when fetching older messages */}
@@ -303,6 +410,7 @@ function ChatMessages({
               key={msg.id}
               msg={msg}
               isDark={isDark}
+              isSending={!!sendingMessages?.[msg.id]}
               onReply={onReply}
               onEdit={onEdit}
               onShowProfile={onShowProfile}

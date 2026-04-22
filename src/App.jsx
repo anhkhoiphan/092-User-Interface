@@ -8,6 +8,7 @@ import MemberList from "./components/MemberList";
 import CreateSpace from "./components/createspace/CreateSpace";
 import LoginPage from "./pages/LoginPage";
 import { initializeAuth } from "./store/slices/authSlice";
+import socketService from "./services/socket.service";
 
 function App() {
   const dispatch = useDispatch();
@@ -23,6 +24,19 @@ function App() {
       dispatch(initializeAuth());
     }
   }, [dispatch, initialized, loading]);
+
+  // Connect WebSocket when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      socketService.connect();
+    } else {
+      socketService.disconnect();
+    }
+
+    return () => {
+      socketService.disconnect();
+    };
+  }, [isAuthenticated]);
 
   const currentView = isSettings ? "settings" : activeView;
 
