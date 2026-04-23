@@ -5,7 +5,7 @@ import DMList from "./roomlist/DMList";
 import SpaceRoomList from "./roomlist/SpaceRoomList";
 import { setActiveRoom, setSearchQuery } from "../store/slices/appSlice";
 
-function RoomList({ activeView, activeSpace, activeRoom, searchQuery, createTab, onCreateTabChange }) {
+function RoomList({ activeView, activeSpace, activeRoom, searchQuery, createTab, onCreateTabChange, onCreateRoomClick }) {
   const dispatch = useDispatch();
   const appState = useSelector((state) => state.app);
 
@@ -49,6 +49,7 @@ function RoomList({ activeView, activeSpace, activeRoom, searchQuery, createTab,
       setActiveRoom={handleSetActiveRoom}
       searchQuery={query}
       setSearchQuery={handleSetSearchQuery}
+      onCreateRoomClick={onCreateRoomClick}
     />
   );
 }

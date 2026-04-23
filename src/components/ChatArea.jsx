@@ -3,6 +3,7 @@ import { useSelector, useDispatch } from "react-redux";
 import { messages, directMessages, rooms } from "../data/mockData";
 import { ChatHeader, ChatMessages, ChatInput } from "./chatarea/index.js";
 import { SettingsView } from "./settings/index.js";
+import { CreateRoomView } from "./createroom/index.js";
 import { UserProfilePopup } from "./memberlist/index.js";
 import {
   setReplyTo,
@@ -502,10 +503,22 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
   );
 }
 
-function ChatAreaWrapper(props) {
+function ChatAreaWrapper({ isCreatingRoom, onCancelCreateRoom, ...props }) {
   const appState = useSelector((state) => state.app);
   const { isDark } = useSelector((state) => state.theme);
   const view = props.activeView || appState.activeView;
+
+  if (isCreatingRoom) {
+    return (
+      <CreateRoomView
+        onCancel={onCancelCreateRoom}
+        onCreate={(roomData) => {
+          console.log("Room created:", roomData);
+          onCancelCreateRoom();
+        }}
+      />
+    );
+  }
 
   if (view === "settings") {
     return <SettingsView isDark={isDark} />;

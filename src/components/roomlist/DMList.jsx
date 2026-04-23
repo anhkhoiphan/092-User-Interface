@@ -41,7 +41,7 @@ function UserAvatar({ name, avatarUrl, isOnline, isDark, isBot, color }) {
   const [imgError, setImgError] = useState(false);
 
   return (
-    <div className="relative flex-shrink-0">
+    <div className="relative shrink-0">
       <div
         className="w-10 h-10 rounded-lg flex items-center justify-center text-sm font-semibold overflow-hidden"
         style={{

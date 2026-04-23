@@ -25,6 +25,7 @@ function App() {
   const [editingAgent, setEditingAgent] = useState(null);
   const [roomListCollapsed, setRoomListCollapsed] = useState(false);
   const [memberListCollapsed, setMemberListCollapsed] = useState(false);
+  const [isCreatingRoom, setIsCreatingRoom] = useState(false);
 
   useEffect(() => {
     if (window.location.pathname !== "/") {
@@ -128,6 +129,7 @@ function App() {
               activeSpace={activeSpace}
               activeRoom={activeRoom}
               searchQuery={searchQuery}
+              onCreateRoomClick={() => setIsCreatingRoom(true)}
             />
           </div>
 
@@ -164,6 +166,8 @@ function App() {
             onToggleMemberList={() => setMemberListCollapsed((p) => !p)}
             roomListCollapsed={roomListCollapsed}
             memberListCollapsed={memberListCollapsed}
+            isCreatingRoom={isCreatingRoom}
+            onCancelCreateRoom={() => setIsCreatingRoom(false)}
           />
 
           {/* Collapsed member list indicator */}

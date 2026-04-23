@@ -113,6 +113,7 @@ function SpaceRoomList({
   setActiveRoom,
   searchQuery,
   setSearchQuery,
+  onCreateRoomClick,
 }) {
   const { isDark } = useSelector((state) => state.theme);
   const [isSearching, setIsSearching] = useState(false);
@@ -205,7 +206,7 @@ function SpaceRoomList({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  console.log("Create room clicked");
+                  if (onCreateRoomClick) onCreateRoomClick();
                 }}
                 className="p-1 rounded hover:opacity-70 transition-opacity cursor-pointer"
                 style={{ color: "var(--text-muted)" }}
