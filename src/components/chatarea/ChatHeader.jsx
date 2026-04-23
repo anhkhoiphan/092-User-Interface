@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FiSidebar } from "react-icons/fi";
+import { FiSidebar, FiSettings } from "react-icons/fi";
 import { getUserColor } from "../../utils/userColor";
 
 function getInitials(name) {
@@ -74,6 +74,7 @@ function ChatHeader({
   onToggleMemberList,
   roomListCollapsed,
   memberListCollapsed,
+  onOpenRoomSettings,
 }) {
   const hasNoSelection = isDM && !dmUser;
 
@@ -152,6 +153,18 @@ function ChatHeader({
         >
           <FiSidebar size={18} style={{ transform: "scaleX(-1)" }} />
         </button>
+
+        {/* Room Settings — chỉ hiển thị khi ở room (không phải DM) */}
+        {!isDM && (
+          <button
+            onClick={onOpenRoomSettings}
+            className="p-1.5 rounded hover:opacity-70 transition-opacity cursor-pointer"
+            style={{ color: "var(--text-muted)" }}
+            title="Thiết lập room"
+          >
+            <FiSettings size={18} />
+          </button>
+        )}
       </div>
     </div>
   );

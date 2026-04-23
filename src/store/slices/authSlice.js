@@ -86,9 +86,9 @@ export const login = createAsyncThunk(
 
 export const register = createAsyncThunk(
   "auth/register",
-  async ({ displayName, email, password, avatar }, { rejectWithValue }) => {
+  async ({ displayName, username, email, password, avatar }, { rejectWithValue }) => {
     try {
-      const payload = { displayName, email, password };
+      const payload = { displayName, username, email, password };
       if (avatar) payload.avatar = avatar;
       const { data } = await authService.register(payload);
       const user = { ...data.user, name: data.user.displayName };

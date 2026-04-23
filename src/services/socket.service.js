@@ -7,6 +7,7 @@ class SocketService {
     this.socket = null;
     this.listeners = new Map();
     this._connected = false;
+    this._activeDMRooms = new Set();
   }
 
   // ==================== Connection ====================
@@ -45,7 +46,10 @@ class SocketService {
     });
 
     this.socket.on("reconnect", (attemptNumber) => {
-      // Socket reconnected
+      // Socket reconnected - re-join active DM rooms
+      this._activeDMRooms.forEach((conversationId) => {
+        this.joinDM(conversationId);
+      });
     });
 
     this.socket.on("reconnect_error", (error) => {
@@ -81,15 +85,22 @@ class SocketService {
   // ==================== DM Room Events ====================
 
   joinDM(conversationId) {
+    if (!conversationId) return;
+    this._activeDMRooms.add(conversationId);
     this.socket?.emit("joinDM", { conversationId });
   }
 
   leaveDM(conversationId) {
+    if (!conversationId) return;
+    this._activeDMRooms.delete(conversationId);
     this.socket?.emit("leaveDM", { conversationId });
   }
 
-  sendDM(conversationId, content) {
-    this.socket?.emit("sendDM", { conversationId, content });
+  sendDM(conversationId, content, tempId) {
+    if (!conversationId) return;
+    const payload = { conversationId, content };
+    if (tempId) payload.tempId = tempId;
+    this.socket?.emit("sendDM", payload);
   }
 
   dmTyping(conversationId, isTyping) {

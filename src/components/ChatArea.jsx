@@ -6,10 +6,6 @@ import { SettingsView } from "./settings/index.js";
 import { CreateRoomView } from "./createroom/index.js";
 import { UserProfilePopup } from "./memberlist/index.js";
 import {
-  setReplyTo,
-  cancelReply,
-  setEditMessage,
-  cancelEdit,
   setSelectedUser,
   clearSelectedUser,
 } from "../store/slices/chatSlice";
@@ -21,14 +17,15 @@ import {
   setActiveConversation,
   markConversationAsRead,
   createOrGetConversation,
+  markConversationAsFetched,
 } from "../store/slices/dmSlice";
 import { addMessage } from "../store/slices/messageSlice";
 import socketService from "../services/socket.service";
 
-function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList, roomListCollapsed, memberListCollapsed }) {
+function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList, roomListCollapsed, memberListCollapsed, onOpenRoomSettings }) {
   const dispatch = useDispatch();
   const { isDark } = useSelector((state) => state.theme);
-  const { replyTo, editMessage, selectedUser, selectedDMUser } = useSelector(
+  const { selectedUser, selectedDMUser } = useSelector(
     (state) => state.chat,
   );
   const { user: currentUser } = useSelector((state) => state.auth);
@@ -38,6 +35,7 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
     activeConversation,
     typing: typingMap,
     messagesLoading,
+    fetchedConversations,
   } = useSelector((state) => state.dm);
   const appState = useSelector((state) => state.app);
 
@@ -47,12 +45,18 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
   const [dmUser, setDmUser] = useState(null);
   const [isTyping, setIsTypingState] = useState(false);
   const [sendingMessages, setSendingMessages] = useState({}); // { [tempId]: { content, timestamp } }
+  const [isCreatingConversation, setIsCreatingConversation] = useState(false);
   const typingTimeoutRef = useRef(null);
   const processedMessageIds = useRef(new Set());
+  const processedTimers = useRef([]);
+  const isCreatingConversationRef = useRef(false);
 
   const allRoomIds = Object.values(rooms).flat().map((r) => r.id);
   const isBotRoom = room === "tro-ly-ai";
   const isDM = (view === "messages") || (room && !allRoomIds.includes(room) && !isBotRoom);
+
+  // Move useSelector hooks to top (was at line 281)
+  const userMessagesMap = useSelector((state) => state.message.userMessages);
 
   // Build dmUser from selectedDMUser or activeConversation
   useEffect(() => {
@@ -101,23 +105,15 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
     }
   }, [room, isDM, selectedDMUser, activeConversation]);
 
-  // When DM room changes, set active conversation and fetch messages
+  // Reset processedMessageIds when conversation changes
   useEffect(() => {
-    if (!isDM || !room) return;
+    processedMessageIds.current.clear();
+    // Clear pending timers
+    processedTimers.current.forEach((timer) => clearTimeout(timer));
+    processedTimers.current = [];
+  }, [activeConversationId]);
 
-    // If we have an activeConversation matching this room, use it
-    if (activeConversation?.id === room) {
-      dispatch(fetchMessages({ conversationId: room, page: 1, limit: 50 }));
-      socketService.joinDM(room);
-      dispatch(markConversationAsRead(room));
-      return;
-    }
-
-    // Otherwise try to find conversation by userId in conversations list
-    // This is handled by DMList when clicking a user
-  }, [isDM, room, activeConversation, dispatch]);
-
-  // Join/leave DM via WebSocket
+  // Join/leave DM via WebSocket - single effect
   useEffect(() => {
     if (!isDM || !activeConversationId) return;
 
@@ -129,65 +125,100 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
     };
   }, [isDM, activeConversationId, dispatch]);
 
-  // Listen to WebSocket events for this DM
+  // Fetch messages when active conversation changes — only if not already fetched
   useEffect(() => {
     if (!isDM || !activeConversationId) return;
+    const isFetched = fetchedConversations[activeConversationId];
+    console.log("[ChatArea] Check fetch:", { activeConversationId, isFetched, fetchedConversations });
+    if (isFetched) return; // Skip: already cached
+    dispatch(fetchMessages({ conversationId: activeConversationId, page: 1, limit: 50 }));
+  }, [isDM, activeConversationId, dispatch, fetchedConversations]);
+
+  // Use refs to keep stable handler references and avoid duplicate listeners
+  const activeConversationIdRef = useRef(activeConversationId);
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
+
+  const currentUserRef = useRef(currentUser);
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
+  // Listen to WebSocket events for this DM - register once only
+  useEffect(() => {
+    if (!isDM) return;
 
     const handleNewDM = (data) => {
-      // Received newDM from server
       if (!data?.id) return;
       if (processedMessageIds.current.has(data.id)) return;
       processedMessageIds.current.add(data.id);
-      setTimeout(() => processedMessageIds.current.delete(data.id), 60000);
+      const timer = setTimeout(() => processedMessageIds.current.delete(data.id), 60000);
+      processedTimers.current.push(timer);
 
       const conversationId = data.conversation_id || data.conversationId;
-      if (conversationId === activeConversationId) {
-        // Remove from sendingMessages if exists
+      const currentConvId = activeConversationIdRef.current;
+
+      // Always cache the message regardless of which conversation is active
+      dispatch(
+        addDMMessage({
+          conversationId,
+          message: {
+            id: data.id,
+            conversation_id: conversationId,
+            sender_id: data.sender_id,
+            content: data.content,
+            is_read: data.is_read ?? false,
+            created_at: data.created_at || data.timestamp,
+            sender: data.sender,
+          },
+        })
+      );
+
+      // Note: We do NOT mark conversation as fetched here.
+      // Only mark as fetched after a full API fetch (page 1) so that
+      // opening a conversation for the first time still loads historical messages.
+
+      // If this is the currently active conversation, also update UI state
+      if (conversationId === currentConvId) {
         setSendingMessages((prev) => {
           const next = { ...prev };
-          Object.keys(next).forEach((key) => {
-            if (next[key].content === data.content) {
-              delete next[key];
-            }
-          });
+          if (data.tempId && next[data.tempId]) {
+            delete next[data.tempId];
+          } else {
+            Object.keys(next).forEach((key) => {
+              if (next[key].content === data.content && data.sender_id === currentUserRef.current?.id) {
+                delete next[key];
+              }
+            });
+          }
           return next;
         });
-        dispatch(
-          addDMMessage({
-            conversationId,
-            message: {
-              id: data.id,
-              conversation_id: conversationId,
-              sender_id: data.sender_id,
-              content: data.content,
-              is_read: data.is_read ?? false,
-              created_at: data.created_at || data.timestamp,
-              sender: data.sender,
-            },
-          })
-        );
       }
     };
 
     const handleDmSent = (data) => {
-      // Received dmSent from server
       if (data.success && data.message) {
-        // Remove from sendingMessages if exists
+        const currentConvId = activeConversationIdRef.current;
         setSendingMessages((prev) => {
           const next = { ...prev };
-          Object.keys(next).forEach((key) => {
-            if (next[key].content === data.message.content) {
-              delete next[key];
-            }
-          });
+          if (data.tempId && next[data.tempId]) {
+            delete next[data.tempId];
+          } else {
+            Object.keys(next).forEach((key) => {
+              if (next[key].content === data.message.content) {
+                delete next[key];
+              }
+            });
+          }
           return next;
         });
         dispatch(
           addDMMessage({
-            conversationId: activeConversationId,
+            conversationId: currentConvId,
             message: {
               ...data.message,
-              conversation_id: activeConversationId,
+              conversation_id: currentConvId,
             },
           })
         );
@@ -195,7 +226,8 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
     };
 
     const handleDmTyping = (data) => {
-      if (data.conversationId === activeConversationId) {
+      const currentConvId = activeConversationIdRef.current;
+      if (data.conversationId === currentConvId) {
         if (data.isTyping) {
           dispatch(
             setTyping({
@@ -211,9 +243,16 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
     };
 
     const handleDmRead = (data) => {
-      if (data.conversationId === activeConversationId) {
-        // Update read status for messages
-        // Backend handles this, we can refresh if needed
+      const currentConvId = activeConversationIdRef.current;
+      if (data.conversationId === currentConvId) {
+        dispatch({
+          type: "dm/updateMessage",
+          payload: {
+            conversationId: currentConvId,
+            messageId: data.messageId,
+            updates: { is_read: true },
+          },
+        });
       }
     };
 
@@ -228,18 +267,23 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
       socketService.off("dmTyping", handleDmTyping);
       socketService.off("dmRead", handleDmRead);
     };
-  }, [isDM, activeConversationId, dispatch]);
+  }, [isDM, dispatch]);
 
   // Build messages for display
-  const dmMessages = isDM && activeConversationId
-    ? (dmMessagesMap[activeConversationId] || [])
+  // Use activeConversationId if available, fallback to room for existing conversations
+  const conversationId = activeConversationId || (isDM && room && !isBotRoom ? room : null);
+  const dmMessages = conversationId
+    ? (dmMessagesMap[conversationId] || [])
     : [];
 
   // Sort messages by created_at ascending (oldest first, newest last)
+  // Stable sort: fallback to id comparison if timestamps are equal
   const sortedDmMessages = [...dmMessages].sort((a, b) => {
-    const dateA = new Date(a.created_at);
-    const dateB = new Date(b.created_at);
-    return dateA - dateB;
+    const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+    if (timeA !== timeB) return timeA - timeB;
+    // Stable fallback: compare by id (string comparison for UUIDs)
+    return String(a.id).localeCompare(String(b.id));
   });
 
   // Convert API messages to UI format
@@ -255,10 +299,12 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
       ? (currentUser?.color || null)
       : (msg.sender?.color || null);
 
-    const date = new Date(msg.created_at);
-    const timestamp = isNaN(date.getTime())
-      ? msg.created_at
-      : date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+    const timestamp = (() => {
+      if (!msg.created_at) return "—";
+      const date = new Date(msg.created_at);
+      if (isNaN(date.getTime())) return msg.created_at;
+      return date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+    })();
 
     return {
       id: msg.id,
@@ -278,7 +324,6 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
 
   // Combine with mock data for non-DM or fallback
   const mockMessages = isDM ? directMessages[room] || [] : messages[room] || [];
-  const userMessagesMap = useSelector((state) => state.message.userMessages);
   const userMessages = userMessagesMap[room] || [];
 
   const chatMessages = isDM && activeConversationId
@@ -302,10 +347,21 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
     if (!content.trim()) return;
 
     if (isDM) {
+      // Guard: prevent chatting with self
+      if (dmUser?.id && dmUser.id === currentUser?.id) {
+        console.warn("Cannot send message to yourself");
+        return;
+      }
+
       let conversationId = activeConversationId;
 
       // Lazy create conversation if not exists
       if (!conversationId && dmUser?.id) {
+        // Prevent race condition: lock creation
+        if (isCreatingConversationRef.current) return;
+        isCreatingConversationRef.current = true;
+        setIsCreatingConversation(true);
+
         try {
           const result = await dispatch(
             createOrGetConversation(dmUser.id)
@@ -316,18 +372,22 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
           }
         } catch (err) {
           // Failed to create conversation
+          isCreatingConversationRef.current = false;
+          setIsCreatingConversation(false);
           return;
         }
+
+        isCreatingConversationRef.current = false;
+        setIsCreatingConversation(false);
       }
 
       if (!conversationId) return;
 
-      // Send via WebSocket
-      // Send DM via WebSocket
-      socketService.sendDM(conversationId, content.trim());
+      // Send via WebSocket with tempId for tracking
+      const tempId = `temp-${Date.now()}`;
+      socketService.sendDM(conversationId, content.trim(), tempId);
 
       // Optimistic UI
-      const tempId = `temp-${Date.now()}`;
       const optimisticMsg = {
         id: tempId,
         sender: currentUser?.display_name || currentUser?.name || "Bạn",
@@ -346,7 +406,7 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
         pending: true,
       };
 
-      // Track sending message
+      // Track sending message (already have tempId from above)
       setSendingMessages((prev) => ({
         ...prev,
         [tempId]: { content: content.trim(), timestamp: Date.now() },
@@ -415,6 +475,23 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
     }, 3000);
   }, [isDM, activeConversationId, isTyping]);
 
+  // Cleanup typing on unmount / before unload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (isDM && activeConversationId) {
+        socketService.dmTyping(activeConversationId, false);
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      // Also clear typing when unmounting
+      if (isDM && activeConversationId) {
+        socketService.dmTyping(activeConversationId, false);
+      }
+    };
+  }, [isDM, activeConversationId]);
+
   const handleStopTyping = useCallback(() => {
     if (!isDM || !activeConversationId) return;
     setIsTypingState(false);
@@ -440,6 +517,7 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
         onToggleMemberList={onToggleMemberList}
         roomListCollapsed={roomListCollapsed}
         memberListCollapsed={memberListCollapsed}
+        onOpenRoomSettings={onOpenRoomSettings}
       />
       {/* User Profile Popup */}
       {selectedUser && (
@@ -460,14 +538,8 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
         hasNoSelection={isDM && !dmUser}
         sendingMessages={sendingMessages}
         isLoading={isDM && messagesLoading}
-        onReply={(msg) => {
-          dispatch(setReplyTo(msg));
-          dispatch(cancelEdit());
-        }}
-        onEdit={(msg) => {
-          dispatch(setEditMessage(msg));
-          dispatch(cancelReply());
-        }}
+        conversationId={conversationId}
+
         onShowProfile={(senderName) => {
           if (isDM && dmUser && senderName !== (currentUser?.display_name || currentUser?.name)) {
             dispatch(setSelectedUser(dmUser));
@@ -491,10 +563,7 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
       <ChatInput
         isDark={isDark}
         placeholder={placeholder}
-        replyTo={replyTo}
-        onCancelReply={() => dispatch(cancelReply())}
-        editMessage={editMessage}
-        onCancelEdit={() => dispatch(cancelEdit())}
+
         onSend={handleSend}
         onTyping={handleTyping}
         onStopTyping={handleStopTyping}
@@ -503,7 +572,7 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
   );
 }
 
-function ChatAreaWrapper({ isCreatingRoom, onCancelCreateRoom, ...props }) {
+function ChatAreaWrapper({ isCreatingRoom, onCancelCreateRoom, isRoomSettingsOpen, onOpenRoomSettings, onCloseRoomSettings, ...props }) {
   const appState = useSelector((state) => state.app);
   const { isDark } = useSelector((state) => state.theme);
   const view = props.activeView || appState.activeView;
@@ -524,7 +593,7 @@ function ChatAreaWrapper({ isCreatingRoom, onCancelCreateRoom, ...props }) {
     return <SettingsView isDark={isDark} />;
   }
 
-  return <ChatArea {...props} />;
+  return <ChatArea {...props} onOpenRoomSettings={onOpenRoomSettings} />;
 }
 
 export default ChatAreaWrapper;

@@ -5,7 +5,7 @@ import { setActiveRoom } from "../../store/slices/appSlice";
 import { setSelectedDMUser } from "../../store/slices/chatSlice";
 import {
   setActiveConversation,
-  fetchMessages,
+  clearActiveConversation,
 } from "../../store/slices/dmSlice";
 import { getUserColor } from "../../utils/userColor";
 import { DMListHeader, DMListSection } from "./DMListComponents";
@@ -210,7 +210,7 @@ function DMItem({ dm, isDark, isActive, onClick, onAddFriend, isOnline }) {
 function DMList({ activeRoom, setActiveRoom: setActiveRoomProp }) {
   const dispatch = useDispatch();
   const { isDark } = useSelector((state) => state.theme);
-  const { loading: dmLoading } = useSelector((state) => state.dm);
+  const { loading: dmLoading, conversations, conversationsFetched } = useSelector((state) => state.dm);
   const [sentRequests, setSentRequests] = useState([]);
 
   const {
@@ -224,7 +224,8 @@ function DMList({ activeRoom, setActiveRoom: setActiveRoomProp }) {
     getUserOnlineStatus,
   } = useDMList();
 
-  const isLoading = hookLoading || dmLoading;
+  // Only show loading if we truly have no data yet
+  const isLoading = (hookLoading || dmLoading) && !conversationsFetched && conversations.length === 0;
 
   const handleNavigateToChat = async (user) => {
     dispatch(setSelectedDMUser(user));
@@ -242,13 +243,6 @@ function DMList({ activeRoom, setActiveRoom: setActiveRoomProp }) {
     // If user has a conversation object, use it directly
     if (user.conversation) {
       dispatch(setActiveConversation(user.conversation));
-      dispatch(
-        fetchMessages({
-          conversationId: user.conversation.id,
-          page: 1,
-          limit: 50,
-        }),
-      );
       if (setActiveRoomProp) {
         setActiveRoomProp(user.conversation.id);
       } else {
@@ -257,8 +251,9 @@ function DMList({ activeRoom, setActiveRoom: setActiveRoomProp }) {
       return;
     }
 
-    // Lazy create: don't create conversation yet, just set the user as active
+    // Lazy create: clear previous conversation and set the user as active
     // Conversation will be created when first message is sent
+    dispatch(clearActiveConversation());
     if (setActiveRoomProp) {
       setActiveRoomProp(user.id);
     } else {

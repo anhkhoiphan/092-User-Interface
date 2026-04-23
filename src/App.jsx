@@ -13,6 +13,11 @@ import ManageAgent from "./components/createspace/ManageAgent";
 import ManageAgentTips from "./components/createspace/ManageAgentTips";
 import LoginPage from "./pages/LoginPage";
 import { initializeAuth } from "./store/slices/authSlice";
+import {
+  addMessage as addDMMessage,
+  markConversationAsFetched,
+  updateConversationLastMessage,
+} from "./store/slices/dmSlice";
 import socketService from "./services/socket.service";
 
 function App() {
@@ -26,6 +31,7 @@ function App() {
   const [roomListCollapsed, setRoomListCollapsed] = useState(false);
   const [memberListCollapsed, setMemberListCollapsed] = useState(false);
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
+  const [isRoomSettingsOpen, setIsRoomSettingsOpen] = useState(false);
 
   useEffect(() => {
     if (window.location.pathname !== "/") {
@@ -48,6 +54,57 @@ function App() {
       socketService.disconnect();
     };
   }, [isAuthenticated]);
+
+  // Global WebSocket listener: always cache incoming DMs regardless of current view
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const handleNewDM = (data) => {
+      if (!data?.id) return;
+
+      const conversationId = data.conversation_id || data.conversationId;
+      if (!conversationId) return;
+
+      // Cache the message in Redux so it's available when user opens the conversation
+      dispatch(
+        addDMMessage({
+          conversationId,
+          message: {
+            id: data.id,
+            conversation_id: conversationId,
+            sender_id: data.sender_id,
+            content: data.content,
+            is_read: data.is_read ?? false,
+            created_at: data.created_at || data.timestamp,
+            sender: data.sender,
+          },
+        })
+      );
+
+      // Note: We do NOT mark conversation as fetched here.
+      // Only mark as fetched after a full API fetch (page 1) so that
+      // opening a conversation for the first time still loads historical messages.
+      // WebSocket messages are cached but the conversation is not "fully fetched" yet.
+
+      // Update last message in conversation list
+      dispatch(
+        updateConversationLastMessage({
+          conversationId,
+          message: {
+            id: data.id,
+            content: data.content,
+            created_at: data.created_at || data.timestamp,
+          },
+        })
+      );
+    };
+
+    socketService.onNewDM(handleNewDM);
+
+    return () => {
+      socketService.off("newDM", handleNewDM);
+    };
+  }, [isAuthenticated, dispatch]);
 
   const currentView = isSettings ? "settings" : activeView;
 
@@ -168,6 +225,9 @@ function App() {
             memberListCollapsed={memberListCollapsed}
             isCreatingRoom={isCreatingRoom}
             onCancelCreateRoom={() => setIsCreatingRoom(false)}
+            isRoomSettingsOpen={isRoomSettingsOpen}
+            onOpenRoomSettings={() => setIsRoomSettingsOpen(true)}
+            onCloseRoomSettings={() => setIsRoomSettingsOpen(false)}
           />
 
           {/* Collapsed member list indicator */}

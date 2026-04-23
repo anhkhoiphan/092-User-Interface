@@ -99,10 +99,7 @@ async function silentRefresh() {
       localStorage.setItem("refreshToken", data.refreshToken);
     }
   } catch {
-    clearAccessToken();
-    if (typeof window !== "undefined") {
-      window.location.reload();
-    }
+    clearAuth();
   }
 }
 
@@ -129,6 +126,10 @@ export const clearAccessToken = () => {
 
 export const clearAuth = () => {
   clearAccessToken();
+  if (refreshTimer) {
+    clearTimeout(refreshTimer);
+    refreshTimer = null;
+  }
   if (typeof window !== "undefined") {
     localStorage.removeItem("refreshToken");
     localStorage.removeItem("auth_user");

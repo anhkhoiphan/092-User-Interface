@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { FiPaperclip } from "react-icons/fi";
-import { MessageActions, ReplyPreview, ReactionBar } from "./MessageActions";
+import { ReplyPreview } from "./MessageActions";
 import { renderMessageWithMentions } from "./MessageContent";
 import FileAttachment from "./FileAttachment";
 import { getUserColor } from "../../utils/userColor";
@@ -14,50 +14,19 @@ function ChatMessage({
   isSending,
 }) {
   const senderColor = getUserColor(msg.sender, msg.color);
-  const [showActions, setShowActions] = useState(false);
-  const [reactions, setReactions] = useState(msg.reactions || []);
-  const [showPicker, setShowPicker] = useState(false);
   const isOwnMessage = msg.isOwn;
-
-  const handleAddReaction = (emoji) => {
-    const existing = reactions.find((r) => r.emoji === emoji);
-    if (existing) {
-      setReactions(
-        reactions.map((r) =>
-          r.emoji === emoji ? { ...r, count: r.count + 1 } : r,
-        ),
-      );
-    } else {
-      setReactions([...reactions, { emoji, count: 1, users: ["You"] }]);
-    }
-    setShowPicker(false);
-  };
+  const [isHovered, setIsHovered] = useState(false);
 
   return (
     <div
       className="flex gap-3 px-3 py-2 rounded-lg transition-colors relative group"
       style={{
-        background: showActions ? "var(--hover-primary)" : "transparent",
+        background: isHovered ? "var(--hover-primary)" : "transparent",
         opacity: msg.pending ? 0.6 : 1,
       }}
-      onMouseEnter={() => setShowActions(true)}
-      onMouseLeave={() => {
-        setShowActions(false);
-        setShowPicker(false);
-      }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Action buttons on hover */}
-      <MessageActions
-        show={showActions}
-        isDark={isDark}
-        isOwnMessage={isOwnMessage}
-        onReply={() => onReply(msg)}
-        onEdit={() => onEdit(msg)}
-        onReaction={handleAddReaction}
-        showPicker={showPicker}
-        onTogglePicker={() => setShowPicker(!showPicker)}
-      />
-
       <div
         className="w-9 h-9 rounded-lg flex items-center justify-center text-sm font-semibold shrink-0 cursor-pointer"
         style={{
@@ -111,8 +80,7 @@ function ChatMessage({
             </span>
           )}
         </div>
-        {/* Reply preview below sender info */}
-        <ReplyPreview replyTo={msg.replyTo} isDark={isDark} />
+
         {/* Message content */}
         <div
           className="text-sm leading-relaxed"
@@ -150,13 +118,7 @@ function ChatMessage({
             <FiPaperclip size={14} /> {msg.attachmentName}
           </div>
         ) : null}
-        {reactions.length > 0 && (
-          <ReactionBar
-            reactions={reactions}
-            onAddReaction={handleAddReaction}
-            isDark={isDark}
-          />
-        )}
+
       </div>
     </div>
   );
@@ -308,16 +270,23 @@ function ChatMessages({
   hasNoSelection,
   sendingMessages,
   isLoading,
+  conversationId,
 }) {
   const messagesContainerRef = useRef(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const prevLoadingRef = useRef(isLoading);
   const prevMessagesLengthRef = useRef(chatMessages.length);
+  const prevConversationIdRef = useRef(conversationId);
 
-  // Auto scroll to bottom when loading finishes or new messages arrive
+  // Auto scroll to bottom when loading finishes, new messages arrive, or conversation changes
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
+
+    // Scroll to bottom when conversation changes
+    if (prevConversationIdRef.current !== conversationId) {
+      container.scrollTop = container.scrollHeight;
+    }
 
     // Scroll to bottom when loading finishes
     if (prevLoadingRef.current && !isLoading) {
@@ -331,7 +300,8 @@ function ChatMessages({
 
     prevLoadingRef.current = isLoading;
     prevMessagesLengthRef.current = chatMessages.length;
-  }, [isLoading, chatMessages.length, isLoadingMore]);
+    prevConversationIdRef.current = conversationId;
+  }, [isLoading, chatMessages.length, isLoadingMore, conversationId]);
 
   // Handle scroll event to detect when user reaches the top
   const handleScroll = (e) => {
@@ -348,7 +318,7 @@ function ChatMessages({
 
   const hasMessages = chatMessages.length > 0;
 
-  const isEmpty = !hasMessages && !isTyping;
+  const isEmpty = !hasMessages && !isTyping && !isLoading;
 
   return (
     <div

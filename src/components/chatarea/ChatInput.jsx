@@ -24,11 +24,7 @@ function ChatInput({
   isDark,
   placeholder,
   replyTo,
-  onCancelReply,
-  editMessage,
-  onCancelEdit,
   onSend,
-  onEdit,
   onTyping,
   onStopTyping,
 }) {
@@ -43,27 +39,9 @@ function ChatInput({
   const containerRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  const placeholderText = editMessage
-    ? "Chỉnh sửa tin nhắn..."
-    : replyTo
-      ? `Reply to ${replyTo.sender}...`
-      : placeholder;
+  const placeholderText = placeholder;
 
-  useEffect(() => {
-    if (editMessage) {
-      if (editorRef.current) {
-        editorRef.current.innerHTML = editMessage.content;
-      }
-      setIsEmpty(!editMessage.content);
-    } else {
-      if (editorRef.current) {
-        editorRef.current.innerHTML = "";
-      }
-      setMentions([]);
-      setIsEmpty(true);
-    }
-    setShowMentions(false);
-  }, [editMessage]);
+
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -180,10 +158,7 @@ function ChatInput({
   const handleSend = () => {
     const content = getPlainText().trim();
     if (content || selectedFiles.length > 0) {
-      if (editMessage && onEdit) {
-        onEdit(editMessage.id, content);
-        if (onCancelEdit) onCancelEdit();
-      } else if (onSend) {
+      if (onSend) {
         onSend(content, replyTo, selectedFiles);
         if (editorRef.current) {
           editorRef.current.innerHTML = "";
@@ -191,7 +166,6 @@ function ChatInput({
         setMentions([]);
         setSelectedFiles([]);
         setIsEmpty(true);
-        if (onCancelReply) onCancelReply();
       }
       setShowMentions(false);
       if (onStopTyping) onStopTyping();
@@ -384,63 +358,6 @@ function ChatInput({
         background: "var(--bg-surface-secondary)",
       }}
     >
-      {editMessage && (
-        <div
-          className="flex items-center justify-between px-3 py-2 mb-2 rounded-md text-xs"
-          style={{
-            background: isDark ? "var(--bg-surface-tertiary)" : "#f0f2f5",
-            border: "1px solid var(--primary)",
-          }}
-        >
-          <div className="flex items-center gap-2 min-w-0">
-            <span style={{ color: "var(--primary)", fontWeight: "600" }}>
-              Chỉnh sửa tin nhắn
-            </span>
-            <span
-              className="truncate"
-              style={{ color: "var(--text-secondary)" }}
-            >
-              {editMessage.content}
-            </span>
-          </div>
-          <button
-            className="ml-2 shrink-0 p-0.5 rounded hover:bg-opacity-20"
-            style={{ color: "var(--text-secondary)" }}
-            onClick={onCancelEdit}
-          >
-            <FiX size={14} />
-          </button>
-        </div>
-      )}
-      {replyTo && !editMessage && (
-        <div
-          className="flex items-center justify-between px-3 py-2 mb-2 rounded-md text-xs"
-          style={{
-            background: isDark ? "var(--bg-surface-tertiary)" : "#f0f2f5",
-            border: "1px solid var(--border-primary)",
-          }}
-        >
-          <div className="flex items-center gap-2 min-w-0">
-            <span style={{ color: "var(--primary)", fontWeight: "600" }}>
-              Replying to {replyTo.sender}
-            </span>
-            <span
-              className="truncate"
-              style={{ color: "var(--text-secondary)" }}
-            >
-              {replyTo.content}
-            </span>
-          </div>
-          <button
-            className="ml-2 shrink-0 p-0.5 rounded hover:bg-opacity-20"
-            style={{ color: "var(--text-secondary)" }}
-            onClick={onCancelReply}
-          >
-            <FiX size={14} />
-          </button>
-        </div>
-      )}
-
       {/* File attachment preview */}
       {selectedFiles.length > 0 && (
         <FileAttachmentPreview
@@ -523,23 +440,17 @@ function ChatInput({
           type="button"
           className="w-9 h-9 border-none rounded-md cursor-pointer flex items-center justify-center transition-colors"
           style={{
-            background: editMessage
-              ? "var(--secondary-active, #f59e0b)"
-              : "var(--primary)",
+            background: "var(--primary)",
             color: isDark ? "var(--bg-surface)" : "#fff",
           }}
           onMouseEnter={(e) =>
-            (e.currentTarget.style.background = editMessage
-              ? "var(--secondary-hover, #d97706)"
-              : "var(--primary-hover)")
+            (e.currentTarget.style.background = "var(--primary-hover)")
           }
           onMouseLeave={(e) =>
-            (e.currentTarget.style.background = editMessage
-              ? "var(--secondary-active, #f59e0b)"
-              : "var(--primary)")
+            (e.currentTarget.style.background = "var(--primary)")
           }
           onClick={handleSend}
-          title={editMessage ? "Lưu chỉnh sửa" : "Gửi"}
+          title="Gửi"
         >
           <IoSend size={18} />
         </button>

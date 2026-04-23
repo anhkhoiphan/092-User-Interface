@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FiMessageSquare, FiCornerDownRight, FiEdit2 } from "react-icons/fi";
+import { FiCornerDownRight } from "react-icons/fi";
 import { getUserColor } from "../../utils/userColor";
 
 const quickReactions = ["👍", "❤️", "😂", "😮", "😢", "🔥"];
@@ -96,11 +96,6 @@ export function MessageActions({
   show,
   isDark,
   isOwnMessage,
-  onReply,
-  onEdit,
-  onReaction,
-  showPicker,
-  onTogglePicker,
 }) {
   if (!show) return null;
 
@@ -115,58 +110,9 @@ export function MessageActions({
         boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
       }}
     >
-      {/* Quick reactions */}
-      {quickReactions.slice(0, 3).map((emoji) => (
-        <button
-          key={emoji}
-          className="w-6 h-6 flex items-center justify-center rounded text-sm hover:scale-125 transition-transform"
-          onClick={() => onReaction(emoji)}
-        >
-          {emoji}
-        </button>
-      ))}
-      {/* Reply button */}
-      <button
-        className="w-7 h-7 flex items-center justify-center rounded-full transition-all"
-        style={{
-          color: "var(--text-secondary)",
-        }}
-        onClick={onReply}
-        title="Reply"
-      >
-        <FiMessageSquare size={14} />
-      </button>
-      {/* Edit button (only for own messages) */}
-      {isOwnMessage && onEdit && (
-        <button
-          className="w-7 h-7 flex items-center justify-center rounded-full transition-all"
-          style={{
-            color: "var(--text-secondary)",
-          }}
-          onClick={onEdit}
-          title="Edit message"
-        >
-          <FiEdit2 size={13} />
-        </button>
-      )}
-      {/* Add reaction button */}
-      <div className="relative">
-        <button
-          className="w-7 h-7 flex items-center justify-center rounded-full transition-all"
-          style={{
-            color: "var(--text-secondary)",
-          }}
-          onClick={onTogglePicker}
-          title="Add reaction"
-        >
-          <span className="text-sm font-bold">+</span>
-        </button>
-        <ReactionPicker
-          show={showPicker}
-          onSelect={onReaction}
-          isDark={isDark}
-        />
-      </div>
+      <span className="text-[10px] px-2" style={{ color: "var(--text-muted)" }}>
+        Tùy chọn tạm ẩn
+      </span>
     </div>
   );
 }

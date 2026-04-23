@@ -66,6 +66,8 @@ const initialState = {
   typing: {}, // { [conversationId]: { userId, isTyping, timestamp } }
   onlineUsers: [],
   unreadCounts: {}, // { [conversationId]: number }
+  fetchedConversations: {}, // { [conversationId]: boolean } Track which conversations have been fetched (page 1)
+  conversationsFetched: false, // Track if conversations list has been fetched at least once
   loading: false,
   messagesLoading: false,
   error: null,
@@ -79,6 +81,7 @@ const dmSlice = createSlice({
     setActiveConversation: (state, action) => {
       state.activeConversationId = action.payload?.id || null;
       state.activeConversation = action.payload || null;
+      state.messagesLoading = false; // Reset loading when switching conversations
     },
 
     clearActiveConversation: (state) => {
@@ -212,6 +215,15 @@ const dmSlice = createSlice({
 
     clearMessages: (state, action) => {
       delete state.messages[action.payload];
+      delete state.fetchedConversations[action.payload];
+    },
+
+    setConversationsFetched: (state, action) => {
+      state.conversationsFetched = action.payload;
+    },
+
+    markConversationAsFetched: (state, action) => {
+      state.fetchedConversations[action.payload] = true;
     },
 
     resetDMState: () => initialState,
@@ -262,14 +274,27 @@ const dmSlice = createSlice({
       })
       .addCase(fetchMessages.fulfilled, (state, action) => {
         state.messagesLoading = false;
-        const { conversationId, messages } = action.payload;
+        const { conversationId, messages, meta } = action.payload;
         if (!state.messages[conversationId]) {
           state.messages[conversationId] = [];
         }
-        // Merge without dupes
-        const existingIds = new Set(state.messages[conversationId].map((m) => m.id));
+        const page = meta?.page || 1;
+        const existing = state.messages[conversationId];
+        const existingIds = new Set(existing.map((m) => m.id));
         const newMessages = messages.filter((m) => !existingIds.has(m.id));
-        state.messages[conversationId] = [...state.messages[conversationId], ...newMessages];
+
+        if (page === 1) {
+          // Initial load: merge new messages into existing
+          // Keep ALL existing messages (including real ones from WebSocket)
+          // Only add messages from API that don't already exist
+          state.messages[conversationId] = [...existing, ...newMessages];
+        } else {
+          // Load more: prepend older messages
+          state.messages[conversationId] = [...newMessages, ...existing];
+        }
+
+        // Mark this conversation as fetched (page 1)
+        state.fetchedConversations[conversationId] = true;
       })
       .addCase(fetchMessages.rejected, (state, action) => {
         state.messagesLoading = false;
@@ -304,6 +329,8 @@ export const {
   updateConversationLastMessage,
   setUnreadCount,
   clearMessages,
+  markConversationAsFetched,
+  setConversationsFetched,
   resetDMState,
   clearError,
 } = dmSlice.actions;

@@ -12,6 +12,9 @@ const UserProfile = forwardRef(function UserProfile(_, ref) {
   const [userName, setUserName] = useState(
     () => localStorage.getItem("userName") || authUser?.name || "Sinh viên",
   );
+  const [username] = useState(
+    () => localStorage.getItem("username") || authUser?.username || "",
+  );
   const [userAvatar, setUserAvatar] = useState(
     () => localStorage.getItem("userAvatar") || authUser?.avatar || null,
   );
@@ -23,11 +26,13 @@ const UserProfile = forwardRef(function UserProfile(_, ref) {
   );
   const [nameError, setNameError] = useState("");
 
+
   useEffect(() => {
     if (authUser) {
       if (!localStorage.getItem("userName")) {
         setUserName(authUser.name || "Sinh viên");
       }
+
       if (!localStorage.getItem("userAvatar")) {
         setUserAvatar(authUser.avatar || null);
       }
@@ -51,13 +56,17 @@ const UserProfile = forwardRef(function UserProfile(_, ref) {
       }
       setNameError("");
 
+
+
       const trimmedBio = userBio.trim();
       const originalName = authUser?.name || "";
+      const originalUsername = authUser?.username || "";
       const originalBio = authUser?.bio || "";
       const originalAvatar = authUser?.avatar || null;
 
       const hasChanged =
         trimmedName !== originalName ||
+
         trimmedBio !== originalBio ||
         userAvatar !== originalAvatar;
 
@@ -66,6 +75,7 @@ const UserProfile = forwardRef(function UserProfile(_, ref) {
       }
 
       localStorage.setItem("userName", trimmedName);
+      localStorage.setItem("username", username);
       localStorage.setItem("userAvatar", userAvatar);
       localStorage.setItem("userBio", trimmedBio);
       if (usernameColor) {
@@ -82,6 +92,7 @@ const UserProfile = forwardRef(function UserProfile(_, ref) {
           bio: trimmedBio || null,
           avatar: userAvatar || null,
         };
+
         const { data } = await authService.updateProfile(payload);
         if (data?.user) {
           dispatch(updateProfileSuccess(data.user));
@@ -116,39 +127,64 @@ const UserProfile = forwardRef(function UserProfile(_, ref) {
         >
           {userAvatar || userName.charAt(0) || "S"}
         </div>
-        <div className="flex-1">
-          <label
-            className="text-xs font-medium mb-1 block"
-            style={{ color: "var(--text-secondary)" }}
-          >
-            Tên hiển thị <span style={{ color: "var(--danger)" }}>*</span>
-          </label>
-          <input
-            type="text"
-            value={userName}
-            onChange={(e) => {
-              setUserName(e.target.value);
-              if (nameError) setNameError("");
-            }}
-            placeholder="Nhập tên hiển thị"
-            className="w-full px-3 py-2 rounded-md text-sm border outline-none"
-            style={{
-              background: "var(--input-bg)",
-              borderColor: nameError ? "var(--danger)" : "var(--input-border)",
-              color: "var(--input-text)",
-            }}
-            onFocus={(e) =>
-              (e.currentTarget.style.borderColor = "var(--primary)")
-            }
-            onBlur={(e) =>
-              (e.currentTarget.style.borderColor = nameError ? "var(--danger)" : "var(--input-border)")
-            }
-          />
-          {nameError && (
-            <div className="text-xs mt-1" style={{ color: "var(--danger)" }}>
-              {nameError}
+        <div className="flex-1 space-y-3">
+          <div>
+            <label
+              className="text-xs font-medium mb-1 block"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              Tên hiển thị <span style={{ color: "var(--danger)" }}>*</span>
+            </label>
+            <input
+              type="text"
+              value={userName}
+              onChange={(e) => {
+                setUserName(e.target.value);
+                if (nameError) setNameError("");
+              }}
+              placeholder="Nhập tên hiển thị"
+              className="w-full px-3 py-2 rounded-md text-sm border outline-none"
+              style={{
+                background: "var(--input-bg)",
+                borderColor: nameError ? "var(--danger)" : "var(--input-border)",
+                color: "var(--input-text)",
+              }}
+              onFocus={(e) =>
+                (e.currentTarget.style.borderColor = "var(--primary)")
+              }
+              onBlur={(e) =>
+                (e.currentTarget.style.borderColor = nameError ? "var(--danger)" : "var(--input-border)")
+              }
+            />
+            {nameError && (
+              <div className="text-xs mt-1" style={{ color: "var(--danger)" }}>
+                {nameError}
+              </div>
+            )}
+          </div>
+          <div>
+            <label
+              className="text-xs font-medium mb-1 block"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              Username
+            </label>
+            <div
+              className="w-full px-3 py-2 rounded-md text-sm border"
+              style={{
+                background: "var(--input-bg)",
+                borderColor: "var(--input-border)",
+                color: "var(--text-muted)",
+                cursor: "default",
+                userSelect: "text",
+              }}
+            >
+              {username || "Chưa có username"}
             </div>
-          )}
+            <div className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+              Dùng để mention và phân biệt ngườidùng.
+            </div>
+          </div>
         </div>
       </div>
       <div>

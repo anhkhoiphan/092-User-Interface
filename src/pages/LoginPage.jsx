@@ -4,6 +4,7 @@ import {
   FiMail,
   FiLock,
   FiUser,
+  FiAtSign,
   FiEye,
   FiEyeOff,
   FiLoader,
@@ -41,14 +42,32 @@ function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [form, setForm] = useState({
     displayName: "",
+    username: "",
     email: "",
     password: "",
   });
   const dispatch = useDispatch();
   const { loading, error } = useSelector((state) => state.auth);
+  const [usernameError, setUsernameError] = useState("");
 
-  const handleChange = (e) =>
-    setForm({ ...form, [e.target.name]: e.target.value });
+  const validateUsername = (value) => {
+    if (!value) return "";
+    if (value.length < 3) return "Username phải có ít nhất 3 ký tự";
+    if (value.length > 30) return "Username tối đa 30 ký tự";
+    if (!/^[a-z0-9_-]+$/.test(value)) return "Username chỉ chứa a-z, 0-9, _, -";
+    return "";
+  };
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    if (name === "username") {
+      const lowerValue = value.toLowerCase();
+      setForm({ ...form, [name]: lowerValue });
+      if (usernameError) setUsernameError("");
+    } else {
+      setForm({ ...form, [name]: value });
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -56,13 +75,22 @@ function LoginPage() {
     if (isLogin) {
       dispatch(login({ email: form.email, password: form.password }));
     } else {
-      dispatch(
-        register({
-          displayName: form.displayName,
-          email: form.email,
-          password: form.password,
-        }),
-      );
+      const usernameValidation = validateUsername(form.username);
+      if (usernameValidation) {
+        setUsernameError(usernameValidation);
+        return;
+      }
+      const payload = {
+        displayName: form.displayName,
+        email: form.email,
+        password: form.password,
+      };
+      const trimmedUsername = form.username.trim();
+      if (trimmedUsername) {
+        payload.username = trimmedUsername;
+      }
+      console.log("Register payload:", JSON.stringify(payload, null, 2));
+      dispatch(register(payload));
     }
   };
 
@@ -239,26 +267,53 @@ function LoginPage() {
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-4">
               {!isLogin && (
-                <div className="group">
-                  <label className="block text-xs font-semibold text-slate-600 mb-1.5 ml-1">
-                    Họ và tên
-                  </label>
-                  <div className="relative">
-                    <FiUser
-                      className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-indigo-500"
-                      size={18}
-                    />
-                    <input
-                      name="displayName"
-                      type="text"
-                      required={!isLogin}
-                      value={form.displayName}
-                      onChange={handleChange}
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white/80 text-slate-800 text-sm outline-none transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200/50 focus:bg-white placeholder:text-slate-400"
-                      placeholder="Nguyễn Văn A"
-                    />
+                <>
+                  <div className="group">
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5 ml-1">
+                      Họ và tên
+                    </label>
+                    <div className="relative">
+                      <FiUser
+                        className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-indigo-500"
+                        size={18}
+                      />
+                      <input
+                        name="displayName"
+                        type="text"
+                        required={!isLogin}
+                        value={form.displayName}
+                        onChange={handleChange}
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white/80 text-slate-800 text-sm outline-none transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200/50 focus:bg-white placeholder:text-slate-400"
+                        placeholder="Nguyễn Văn A"
+                      />
+                    </div>
                   </div>
-                </div>
+                  <div className="group">
+                    <label className="block text-xs font-semibold text-slate-600 mb-1.5 ml-1">
+                      Username
+                    </label>
+                    <div className="relative">
+                      <FiAtSign
+                        className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-indigo-500"
+                        size={18}
+                      />
+                      <input
+                        name="username"
+                        type="text"
+                        value={form.username}
+                        onChange={handleChange}
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white/80 text-slate-800 text-sm outline-none transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200/50 focus:bg-white placeholder:text-slate-400"
+                        placeholder="nguyenvana (tùy chọn)"
+                      />
+                    </div>
+                    {usernameError && (
+                      <p className="text-xs text-red-500 mt-1 ml-1">{usernameError}</p>
+                    )}
+                    <p className="text-xs text-slate-400 mt-1 ml-1">
+                      Tùy chọn. Nếu để trống, hệ thống sẽ tự tạo username từ email.
+                    </p>
+                  </div>
+                </>
               )}
 
               <div className="group">

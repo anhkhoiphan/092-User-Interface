@@ -42,7 +42,7 @@ function matchesStudyBot(query) {
 
 export function useDMList() {
   const dispatch = useDispatch();
-  const { conversations, onlineUsers } = useSelector((state) => state.dm);
+  const { conversations, onlineUsers, conversationsFetched } = useSelector((state) => state.dm);
 
   const [searchResults, setSearchResults] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -53,10 +53,11 @@ export function useDMList() {
   const statusPollingRef = useRef(null);
   const processedMessageIds = useRef(new Set());
 
-  // Fetch conversations on mount
+  // Fetch conversations on mount — only if not already fetched
   useEffect(() => {
+    if (conversationsFetched) return; // Skip: already cached
     dispatch(fetchConversations());
-  }, [dispatch]);
+  }, [dispatch, conversationsFetched]);
 
   // Listen to realtime updates via WebSocket
   useEffect(() => {
@@ -214,7 +215,7 @@ export function useDMList() {
     return () => {
       mounted = false;
     };
-  }, [searchQuery]);
+  }, [searchQuery, dispatch]);
 
   // Polling online status for visible users
   const fetchStatuses = useCallback(async (userIds) => {
@@ -257,8 +258,18 @@ export function useDMList() {
     };
   }, [conversations, searchResults, searchQuery, fetchStatuses]);
 
-  // Normalize conversations for UI
-  const normalizedConversations = conversations.map((conv) => ({
+  // Normalize conversations for UI and sort by latest message (newest first)
+  const normalizedConversations = [...conversations]
+    .sort((a, b) => {
+      const timeA = a.last_message?.created_at
+        ? new Date(a.last_message.created_at).getTime()
+        : 0;
+      const timeB = b.last_message?.created_at
+        ? new Date(b.last_message.created_at).getTime()
+        : 0;
+      return timeB - timeA; // Descending: newest first
+    })
+    .map((conv) => ({
       id: conv.id,
       userId: conv.other_user?.id,
       name: conv.other_user?.display_name || "Unknown",
@@ -271,7 +282,7 @@ export function useDMList() {
       email: conv.other_user?.email || "",
       mutualFriends: 0,
       conversation: conv,
-  }));
+    }));
 
   const filteredConversations = searchQuery.trim()
     ? normalizedConversations.filter((dm) =>
