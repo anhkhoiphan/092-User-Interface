@@ -43,6 +43,7 @@ function matchesStudyBot(query) {
 export function useDMList() {
   const dispatch = useDispatch();
   const { conversations, onlineUsers, conversationsFetched } = useSelector((state) => state.dm);
+  console.log("[useDMList] Hook called, conversations:", conversations.length, "fetched:", conversationsFetched);
 
   const [searchResults, setSearchResults] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -54,10 +55,14 @@ export function useDMList() {
   const processedMessageIds = useRef(new Set());
 
   // Fetch conversations on mount — only if not already fetched
+  const isFetchingRef = useRef(false);
   useEffect(() => {
     if (conversationsFetched) return; // Skip: already cached
+    if (isFetchingRef.current) return; // Prevent duplicate requests
+    isFetchingRef.current = true;
     dispatch(fetchConversations());
-  }, [dispatch, conversationsFetched]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatch]);
 
   // Listen to realtime updates via WebSocket
   useEffect(() => {

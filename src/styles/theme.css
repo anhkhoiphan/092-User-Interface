@@ -15,19 +15,19 @@
 /* ===================== DARK MODE ===================== */
 .dark {
   /* === SURFACE COLORS === */
-  --bg-surface: #1a1f35;
-  --bg-surface-secondary: #222842;
-  --bg-surface-tertiary: #2a3050;
+  --bg-surface: #1e2238;
+  --bg-surface-secondary: #252b4a;
+  --bg-surface-tertiary: #2e3558;
 
   /* === BORDER COLORS === */
-  --border-primary: #333a5c;
-  --border-secondary: #3d4568;
+  --border-primary: #3d4568;
+  --border-secondary: #4a5478;
 
   /* === TEXT COLORS === */
-  --text-primary: #e8ecf4;
-  --text-secondary: #b0bdd0;
-  --text-tertiary: #8899b5;
-  --text-muted: #6b7a99;
+  --text-primary: #f0f3f8;
+  --text-secondary: #c4d0e4;
+  --text-tertiary: #9aadcc;
+  --text-muted: #7a8db0;
 
   /* === BRAND COLORS === */
   --primary: #a3a6ff;
@@ -43,28 +43,28 @@
   --tertiary-active: #ac8aff26;
 
   /* === INPUT COLORS === */
-  --input-bg: #222842;
-  --input-border: #333a5c;
-  --input-text: #e8ecf4;
-  --input-placeholder: #8899b5;
+  --input-bg: #252b4a;
+  --input-border: #3d4568;
+  --input-text: #f0f3f8;
+  --input-placeholder: #9aadcc;
 
   /* === HOVER COLORS === */
-  --hover-primary: #2a3050;
-  --hover-secondary: #333a5c;
+  --hover-primary: #2e3558;
+  --hover-secondary: #3d4568;
 
   /* === CARD/BG COLORS === */
-  --card-bg: #222842;
-  --card-bg-secondary: #2a3050;
+  --card-bg: #252b4a;
+  --card-bg-secondary: #2e3558;
 
   /* === STATUS COLORS === */
   --online: #69f6b8;
-  --offline: #8899b5;
+  --offline: #9aadcc;
   --notification: #a3a6ff;
   --danger: #ff6b6b;
 
   /* === SCROLLBAR === */
-  --scrollbar-thumb: #3d4568;
-  --scrollbar-thumb-hover: #4d5578;
+  --scrollbar-thumb: #4a5478;
+  --scrollbar-thumb-hover: #5a6488;
 }
 
 /* ===================== LIGHT MODE ===================== */

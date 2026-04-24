@@ -8,9 +8,13 @@ export const fetchConversations = createAsyncThunk(
   "dm/fetchConversations",
   async (_, { rejectWithValue }) => {
     try {
+      console.log("[fetchConversations] Calling API...");
       const { data } = await dmService.getConversations({ page: 1, limit: 20 });
-      return data.data || data.conversations || data || [];
+      const result = data.data || data.conversations || data || [];
+      console.log("[fetchConversations] Result:", { count: result.length, ids: result.map(c => c.id) });
+      return result;
     } catch (err) {
+      console.error("[fetchConversations] Error:", err);
       return rejectWithValue(err.response?.data?.message || "Không thể tải danh sách trò chuyện");
     }
   }
@@ -243,6 +247,7 @@ const dmSlice = createSlice({
       .addCase(fetchConversations.fulfilled, (state, action) => {
         state.loading = false;
         state.conversations = action.payload;
+        state.conversationsFetched = true;
       })
       .addCase(fetchConversations.rejected, (state, action) => {
         state.loading = false;

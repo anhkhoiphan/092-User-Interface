@@ -7,7 +7,14 @@ export const dmService = {
   createOrGetConversation: (userId) => api.post("/dms", { userId }),
 
   /** Get list of conversations */
-  getConversations: (params) => api.get("/dms", { params }),
+  getConversations: async (params) => {
+    const response = await api.get("/dms", { params });
+    console.log("[dmService.getConversations] API response:", {
+      count: response.data?.data?.length || response.data?.conversations?.length || response.data?.length || 0,
+      data: response.data,
+    });
+    return response;
+  },
 
   // === Messages ===
 

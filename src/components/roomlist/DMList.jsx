@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { FiMessageSquare, FiUserPlus, FiSearch } from "react-icons/fi";
 import { setActiveRoom } from "../../store/slices/appSlice";
@@ -211,7 +211,13 @@ function DMList({ activeRoom, setActiveRoom: setActiveRoomProp }) {
   const dispatch = useDispatch();
   const { isDark } = useSelector((state) => state.theme);
   const { loading: dmLoading, conversations, conversationsFetched } = useSelector((state) => state.dm);
+  console.log("[DMList] Render, conversations:", conversations.length, "fetched:", conversationsFetched);
   const [sentRequests, setSentRequests] = useState([]);
+
+  useEffect(() => {
+    console.log("[DMList] MOUNTED");
+    return () => console.log("[DMList] UNMOUNTED");
+  }, []);
 
   const {
     items,
