@@ -11,13 +11,18 @@ export const fetchConversations = createAsyncThunk(
       console.log("[fetchConversations] Calling API...");
       const { data } = await dmService.getConversations({ page: 1, limit: 20 });
       const result = data.data || data.conversations || data || [];
-      console.log("[fetchConversations] Result:", { count: result.length, ids: result.map(c => c.id) });
+      console.log("[fetchConversations] Result:", {
+        count: result.length,
+        ids: result.map((c) => c.id),
+      });
       return result;
     } catch (err) {
       console.error("[fetchConversations] Error:", err);
-      return rejectWithValue(err.response?.data?.message || "Không thể tải danh sách trò chuyện");
+      return rejectWithValue(
+        err.response?.data?.message || "Không thể tải danh sách trò chuyện",
+      );
     }
-  }
+  },
 );
 
 export const createOrGetConversation = createAsyncThunk(
@@ -27,25 +32,32 @@ export const createOrGetConversation = createAsyncThunk(
       const { data } = await dmService.createOrGetConversation(userId);
       return data.data || data;
     } catch (err) {
-      return rejectWithValue(err.response?.data?.message || "Không thể tạo cuộc trò chuyện");
+      return rejectWithValue(
+        err.response?.data?.message || "Không thể tạo cuộc trò chuyện",
+      );
     }
-  }
+  },
 );
 
 export const fetchMessages = createAsyncThunk(
   "dm/fetchMessages",
   async ({ conversationId, page = 1, limit = 20 }, { rejectWithValue }) => {
     try {
-      const { data } = await dmService.getMessages(conversationId, { page, limit });
+      const { data } = await dmService.getMessages(conversationId, {
+        page,
+        limit,
+      });
       return {
         conversationId,
         messages: data.data || data.messages || data || [],
         meta: data.meta || null,
       };
     } catch (err) {
-      return rejectWithValue(err.response?.data?.message || "Không thể tải tin nhắn");
+      return rejectWithValue(
+        err.response?.data?.message || "Không thể tải tin nhắn",
+      );
     }
-  }
+  },
 );
 
 export const markConversationAsRead = createAsyncThunk(
@@ -55,9 +67,11 @@ export const markConversationAsRead = createAsyncThunk(
       await dmService.markAsRead(conversationId);
       return conversationId;
     } catch (err) {
-      return rejectWithValue(err.response?.data?.message || "Không thể đánh dấu đã đọc");
+      return rejectWithValue(
+        err.response?.data?.message || "Không thể đánh dấu đã đọc",
+      );
     }
-  }
+  },
 );
 
 // ==================== Slice ====================
@@ -99,17 +113,26 @@ const dmSlice = createSlice({
         state.messages[conversationId] = [];
       }
       const messages = state.messages[conversationId];
-      
+
       // Check if this is a real message replacing a pending one
       const pendingIndex = messages.findIndex(
-        (m) => m.pending && m.sender_id === message.sender_id && m.content === message.content
+        (m) =>
+          m.pending &&
+          m.sender_id === message.sender_id &&
+          m.content === message.content,
       );
       if (pendingIndex !== -1) {
-        // Replace pending message with real one
-        messages[pendingIndex] = { ...message, pending: false };
+        const exists = messages.some((m) => m.id === message.id);
+        if (exists) {
+          // If real message already exists, just remove the pending one
+          messages.splice(pendingIndex, 1);
+        } else {
+          // Replace pending message with real one
+          messages[pendingIndex] = { ...message, pending: false };
+        }
         return;
       }
-      
+
       // Dedupe by id
       const exists = messages.some((m) => m.id === message.id);
       if (!exists) {
@@ -122,9 +145,14 @@ const dmSlice = createSlice({
       if (!state.messages[conversationId]) {
         state.messages[conversationId] = [];
       }
-      const existingIds = new Set(state.messages[conversationId].map((m) => m.id));
+      const existingIds = new Set(
+        state.messages[conversationId].map((m) => m.id),
+      );
       const newMessages = messages.filter((m) => !existingIds.has(m.id));
-      state.messages[conversationId] = [...newMessages, ...state.messages[conversationId]];
+      state.messages[conversationId] = [
+        ...newMessages,
+        ...state.messages[conversationId],
+      ];
     },
 
     updateMessage: (state, action) => {
@@ -140,7 +168,11 @@ const dmSlice = createSlice({
     setTyping: (state, action) => {
       const { conversationId, userId, isTyping } = action.payload;
       if (isTyping) {
-        state.typing[conversationId] = { userId, isTyping, timestamp: Date.now() };
+        state.typing[conversationId] = {
+          userId,
+          isTyping,
+          timestamp: Date.now(),
+        };
       } else {
         if (state.typing[conversationId]?.userId === userId) {
           delete state.typing[conversationId];
@@ -200,7 +232,8 @@ const dmSlice = createSlice({
         state.conversations[idx] = {
           ...state.conversations[idx],
           last_message: message,
-          unread_count: unreadCount ?? state.conversations[idx].unread_count + 1,
+          unread_count:
+            unreadCount ?? state.conversations[idx].unread_count + 1,
         };
         // Move to top
         const conv = state.conversations.splice(idx, 1)[0];
@@ -231,6 +264,41 @@ const dmSlice = createSlice({
     },
 
     resetDMState: () => initialState,
+
+    replaceTempConversation: (state, action) => {
+      const { tempId, realConversation } = action.payload;
+
+      // Update conversations list
+      const idx = state.conversations.findIndex((c) => c.id === tempId);
+      if (idx !== -1) {
+        state.conversations[idx] = realConversation;
+      } else {
+        state.conversations.unshift(realConversation);
+      }
+
+      // Update active conversation if it matches
+      if (state.activeConversationId === tempId) {
+        state.activeConversationId = realConversation.id;
+        state.activeConversation = realConversation;
+      }
+
+      // Move messages from tempId to realId
+      if (state.messages[tempId]) {
+        state.messages[realConversation.id] = state.messages[tempId].map(
+          (m) => ({
+            ...m,
+            conversation_id: realConversation.id,
+          }),
+        );
+        delete state.messages[tempId];
+      }
+
+      // Move typing state
+      if (state.typing[tempId]) {
+        state.typing[realConversation.id] = state.typing[tempId];
+        delete state.typing[tempId];
+      }
+    },
 
     clearError: (state) => {
       state.error = null;
@@ -284,7 +352,19 @@ const dmSlice = createSlice({
           state.messages[conversationId] = [];
         }
         const page = meta?.page || 1;
-        const existing = state.messages[conversationId];
+        let existing = state.messages[conversationId];
+
+        // Remove pending messages if they are already confirmed in the API response
+        existing = existing.filter((ex) => {
+          if (ex.pending) {
+            const isMatchInApi = messages.some(
+              (m) => m.sender_id === ex.sender_id && m.content === ex.content,
+            );
+            return !isMatchInApi;
+          }
+          return true;
+        });
+
         const existingIds = new Set(existing.map((m) => m.id));
         const newMessages = messages.filter((m) => !existingIds.has(m.id));
 
@@ -308,7 +388,9 @@ const dmSlice = createSlice({
       // markConversationAsRead
       .addCase(markConversationAsRead.fulfilled, (state, action) => {
         const conversationId = action.payload;
-        const idx = state.conversations.findIndex((c) => c.id === conversationId);
+        const idx = state.conversations.findIndex(
+          (c) => c.id === conversationId,
+        );
         if (idx !== -1) {
           state.conversations[idx].unread_count = 0;
         }
@@ -336,6 +418,7 @@ export const {
   clearMessages,
   markConversationAsFetched,
   setConversationsFetched,
+  replaceTempConversation,
   resetDMState,
   clearError,
 } = dmSlice.actions;

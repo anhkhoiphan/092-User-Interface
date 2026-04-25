@@ -118,7 +118,6 @@ function ChatMessage({
             <FiPaperclip size={14} /> {msg.attachmentName}
           </div>
         ) : null}
-
       </div>
     </div>
   );
@@ -292,7 +291,7 @@ function ChatMessages({
     if (prevLoadingRef.current && !isLoading) {
       container.scrollTop = container.scrollHeight;
     }
-    
+
     // Scroll to bottom when new messages added (but not when loading more)
     if (chatMessages.length > prevMessagesLengthRef.current && !isLoadingMore) {
       container.scrollTop = container.scrollHeight;
@@ -326,7 +325,7 @@ function ChatMessages({
       className={`flex-1 p-4 ${isEmpty ? "flex items-center justify-center overflow-hidden" : ` ${isLoading ? "overflow-hidden" : "overflow-y-auto"}`}`}
       onScroll={isEmpty ? undefined : handleScroll}
     >
-      {isLoading ? (
+      {isLoading && !hasMessages ? (
         <div className="flex flex-col gap-2 w-full min-h-full justify-end pb-2">
           <MessageSkeleton isDark={isDark} width="60%" showSecondLine={false} />
           <MessageSkeleton isDark={isDark} width="85%" />

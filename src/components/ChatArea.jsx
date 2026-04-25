@@ -5,10 +5,7 @@ import { ChatHeader, ChatMessages, ChatInput } from "./chatarea/index.js";
 import { SettingsView } from "./settings/index.js";
 import { CreateRoomView } from "./createroom/index.js";
 import { UserProfilePopup } from "./memberlist/index.js";
-import {
-  setSelectedUser,
-  clearSelectedUser,
-} from "../store/slices/chatSlice";
+import { setSelectedUser, clearSelectedUser } from "../store/slices/chatSlice";
 import {
   fetchMessages,
   addMessage as addDMMessage,
@@ -22,12 +19,18 @@ import {
 import { addMessage } from "../store/slices/messageSlice";
 import socketService from "../services/socket.service";
 
-function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList, roomListCollapsed, memberListCollapsed, onOpenRoomSettings }) {
+function ChatArea({
+  activeView,
+  activeRoom,
+  onToggleRoomList,
+  onToggleMemberList,
+  roomListCollapsed,
+  memberListCollapsed,
+  onOpenRoomSettings,
+}) {
   const dispatch = useDispatch();
   const { isDark } = useSelector((state) => state.theme);
-  const { selectedUser, selectedDMUser } = useSelector(
-    (state) => state.chat,
-  );
+  const { selectedUser, selectedDMUser } = useSelector((state) => state.chat);
   const { user: currentUser } = useSelector((state) => state.auth);
   const {
     messages: dmMessagesMap,
@@ -51,9 +54,12 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
   const processedTimers = useRef([]);
   const isCreatingConversationRef = useRef(false);
 
-  const allRoomIds = Object.values(rooms).flat().map((r) => r.id);
+  const allRoomIds = Object.values(rooms)
+    .flat()
+    .map((r) => r.id);
   const isBotRoom = room === "tro-ly-ai";
-  const isDM = (view === "messages") || (room && !allRoomIds.includes(room) && !isBotRoom);
+  const isDM =
+    view === "messages" || (room && !allRoomIds.includes(room) && !isBotRoom);
 
   // Move useSelector hooks to top (was at line 281)
   const userMessagesMap = useSelector((state) => state.message.userMessages);
@@ -115,7 +121,12 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
 
   // Join/leave DM via WebSocket - single effect
   useEffect(() => {
-    if (!isDM || !activeConversationId) return;
+    if (
+      !isDM ||
+      !activeConversationId ||
+      activeConversationId.toString().startsWith("temp-conv-")
+    )
+      return;
 
     socketService.joinDM(activeConversationId);
     dispatch(markConversationAsRead(activeConversationId));
@@ -127,11 +138,26 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
 
   // Fetch messages when active conversation changes — only if not already fetched
   useEffect(() => {
-    if (!isDM || !activeConversationId) return;
+    if (
+      !isDM ||
+      !activeConversationId ||
+      activeConversationId.toString().startsWith("temp-conv-")
+    )
+      return;
     const isFetched = fetchedConversations[activeConversationId];
-    console.log("[ChatArea] Check fetch:", { activeConversationId, isFetched, fetchedConversations });
+    console.log("[ChatArea] Check fetch:", {
+      activeConversationId,
+      isFetched,
+      fetchedConversations,
+    });
     if (isFetched) return; // Skip: already cached
-    dispatch(fetchMessages({ conversationId: activeConversationId, page: 1, limit: 50 }));
+    dispatch(
+      fetchMessages({
+        conversationId: activeConversationId,
+        page: 1,
+        limit: 50,
+      }),
+    );
   }, [isDM, activeConversationId, dispatch, fetchedConversations]);
 
   // Use refs to keep stable handler references and avoid duplicate listeners
@@ -153,7 +179,10 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
       if (!data?.id) return;
       if (processedMessageIds.current.has(data.id)) return;
       processedMessageIds.current.add(data.id);
-      const timer = setTimeout(() => processedMessageIds.current.delete(data.id), 60000);
+      const timer = setTimeout(
+        () => processedMessageIds.current.delete(data.id),
+        60000,
+      );
       processedTimers.current.push(timer);
 
       const conversationId = data.conversation_id || data.conversationId;
@@ -172,7 +201,7 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
             created_at: data.created_at || data.timestamp,
             sender: data.sender,
           },
-        })
+        }),
       );
 
       // Note: We do NOT mark conversation as fetched here.
@@ -187,7 +216,10 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
             delete next[data.tempId];
           } else {
             Object.keys(next).forEach((key) => {
-              if (next[key].content === data.content && data.sender_id === currentUserRef.current?.id) {
+              if (
+                next[key].content === data.content &&
+                data.sender_id === currentUserRef.current?.id
+              ) {
                 delete next[key];
               }
             });
@@ -220,7 +252,7 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
               ...data.message,
               conversation_id: currentConvId,
             },
-          })
+          }),
         );
       }
     };
@@ -234,7 +266,7 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
               conversationId: data.conversationId,
               userId: data.userId,
               isTyping: true,
-            })
+            }),
           );
         } else {
           dispatch(clearTyping(data.conversationId));
@@ -271,10 +303,9 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
 
   // Build messages for display
   // Use activeConversationId if available, fallback to room for existing conversations
-  const conversationId = activeConversationId || (isDM && room && !isBotRoom ? room : null);
-  const dmMessages = conversationId
-    ? (dmMessagesMap[conversationId] || [])
-    : [];
+  const conversationId =
+    activeConversationId || (isDM && room && !isBotRoom ? room : null);
+  const dmMessages = conversationId ? dmMessagesMap[conversationId] || [] : [];
 
   // Sort messages by created_at ascending (oldest first, newest last)
   // Stable sort: fallback to id comparison if timestamps are equal
@@ -290,20 +321,25 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
   const apiMessages = sortedDmMessages.map((msg) => {
     const isOwn = msg.sender_id === currentUser?.id;
     const sender = isOwn
-      ? (currentUser?.display_name || currentUser?.name || "Bạn")
-      : (msg.sender?.display_name || "Unknown");
+      ? currentUser?.display_name || currentUser?.name || "Bạn"
+      : msg.sender?.display_name || "Unknown";
     const avatar = isOwn
-      ? (currentUser?.display_name?.charAt(0).toUpperCase() || currentUser?.name?.charAt(0).toUpperCase() || "B")
-      : (msg.sender?.display_name?.charAt(0).toUpperCase() || "?");
+      ? currentUser?.display_name?.charAt(0).toUpperCase() ||
+        currentUser?.name?.charAt(0).toUpperCase() ||
+        "B"
+      : msg.sender?.display_name?.charAt(0).toUpperCase() || "?";
     const color = isOwn
-      ? (currentUser?.color || null)
-      : (msg.sender?.color || null);
+      ? currentUser?.color || null
+      : msg.sender?.color || null;
 
     const timestamp = (() => {
       if (!msg.created_at) return "—";
       const date = new Date(msg.created_at);
       if (isNaN(date.getTime())) return msg.created_at;
-      return date.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+      return date.toLocaleTimeString("vi-VN", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
     })();
 
     return {
@@ -326,14 +362,16 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
   const mockMessages = isDM ? directMessages[room] || [] : messages[room] || [];
   const userMessages = userMessagesMap[room] || [];
 
-  const chatMessages = isDM && activeConversationId
-    ? apiMessages
-    : [...mockMessages, ...userMessages];
+  const chatMessages =
+    isDM && activeConversationId
+      ? apiMessages
+      : [...mockMessages, ...userMessages];
 
   // Typing indicator from other user
-  const otherTyping = isDM && activeConversationId
-    ? typingMap[activeConversationId]?.isTyping
-    : false;
+  const otherTyping =
+    isDM && activeConversationId
+      ? typingMap[activeConversationId]?.isTyping
+      : false;
 
   const placeholder =
     isBotRoom || (isDM && room === "studybot-dm")
@@ -343,118 +381,163 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
         : "Nhắn tin cho nhóm học...";
 
   // Handle send message via WebSocket
-  const handleSend = useCallback(async (content, replyToMsg, files) => {
-    if (!content.trim()) return;
+  const handleSend = useCallback(
+    async (content, replyToMsg, files) => {
+      if (!content.trim()) return;
 
-    if (isDM) {
-      // Guard: prevent chatting with self
-      if (dmUser?.id && dmUser.id === currentUser?.id) {
-        console.warn("Cannot send message to yourself");
-        return;
-      }
-
-      let conversationId = activeConversationId;
-
-      // Lazy create conversation if not exists
-      if (!conversationId && dmUser?.id) {
-        // Prevent race condition: lock creation
-        if (isCreatingConversationRef.current) return;
-        isCreatingConversationRef.current = true;
-        setIsCreatingConversation(true);
-
-        try {
-          const result = await dispatch(
-            createOrGetConversation(dmUser.id)
-          ).unwrap();
-          if (result) {
-            conversationId = result.id;
-            dispatch(setActiveConversation(result));
-          }
-        } catch (err) {
-          // Failed to create conversation
-          isCreatingConversationRef.current = false;
-          setIsCreatingConversation(false);
+      if (isDM) {
+        // Guard: prevent chatting with self
+        if (dmUser?.id && dmUser.id === currentUser?.id) {
+          console.warn("Cannot send message to yourself");
           return;
         }
 
-        isCreatingConversationRef.current = false;
-        setIsCreatingConversation(false);
-      }
+        let conversationId = activeConversationId;
+        const contentTrimmed = content.trim();
+        const msgTempId = `temp-${Date.now()}`;
 
-      if (!conversationId) return;
+        // Optimistic UI for message
+        const optimisticMsg = {
+          id: msgTempId,
+          sender: currentUser?.display_name || currentUser?.name || "Bạn",
+          avatar:
+            currentUser?.display_name?.charAt(0).toUpperCase() ||
+            currentUser?.name?.charAt(0).toUpperCase() ||
+            "B",
+          timestamp: new Date().toLocaleTimeString("vi-VN", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          content: contentTrimmed,
+          isPinned: false,
+          replyTo: replyToMsg || null,
+          isOwn: true,
+          senderId: currentUser?.id,
+          sender_id: currentUser?.id,
+          is_read: false,
+          created_at: new Date().toISOString(),
+          pending: true,
+        };
 
-      // Send via WebSocket with tempId for tracking
-      const tempId = `temp-${Date.now()}`;
-      socketService.sendDM(conversationId, content.trim(), tempId);
+        // Track sending message
+        setSendingMessages((prev) => ({
+          ...prev,
+          [msgTempId]: { content: contentTrimmed, timestamp: Date.now() },
+        }));
 
-      // Optimistic UI
-      const optimisticMsg = {
-        id: tempId,
-        sender: currentUser?.display_name || currentUser?.name || "Bạn",
-        avatar: currentUser?.display_name?.charAt(0).toUpperCase() || currentUser?.name?.charAt(0).toUpperCase() || "B",
-        timestamp: new Date().toLocaleTimeString("vi-VN", {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        content: content.trim(),
-        isPinned: false,
-        replyTo: replyToMsg || null,
-        isOwn: true,
-        senderId: currentUser?.id,
-        is_read: false,
-        created_at: new Date().toISOString(),
-        pending: true,
-      };
+        // Lazy create conversation if not exists
+        if (!conversationId && dmUser?.id) {
+          if (isCreatingConversationRef.current) return;
+          isCreatingConversationRef.current = true;
+          setIsCreatingConversation(true);
 
-      // Track sending message (already have tempId from above)
-      setSendingMessages((prev) => ({
-        ...prev,
-        [tempId]: { content: content.trim(), timestamp: Date.now() },
-      }));
+          const tempConvId = `temp-conv-${dmUser.id}`;
 
-      dispatch(
-        addDMMessage({
-          conversationId,
-          message: {
-            id: optimisticMsg.id,
-            conversation_id: conversationId,
-            sender_id: currentUser?.id,
-            content: content.trim(),
-            is_read: false,
-            created_at: optimisticMsg.created_at,
-            sender: {
-              id: currentUser?.id,
-              display_name: currentUser?.display_name || currentUser?.name || "Bạn",
-              avatar_url: currentUser?.avatar || null,
+          // Optimistically set active conversation
+          const tempConv = {
+            id: tempConvId,
+            other_user: dmUser,
+            isTemp: true,
+            unread_count: 0,
+          };
+          dispatch(setActiveConversation(tempConv));
+
+          // Optimistically add message
+          dispatch(
+            addDMMessage({
+              conversationId: tempConvId,
+              message: {
+                ...optimisticMsg,
+                conversation_id: tempConvId,
+                sender: {
+                  id: currentUser?.id,
+                  display_name:
+                    currentUser?.display_name || currentUser?.name || "Bạn",
+                  avatar_url: currentUser?.avatar || null,
+                },
+              },
+            }),
+          );
+
+          // Stop typing optimistic
+          socketService.dmTyping(tempConvId, false);
+          if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+            typingTimeoutRef.current = null;
+          }
+
+          try {
+            const result = await dispatch(
+              createOrGetConversation(dmUser.id),
+            ).unwrap();
+
+            if (result) {
+              // Swap temp ID with real ID in Redux
+              dispatch({
+                type: "dm/replaceTempConversation",
+                payload: { tempId: tempConvId, realConversation: result },
+              });
+
+              // Now send via WebSocket
+              socketService.sendDM(result.id, contentTrimmed, msgTempId);
+            }
+          } catch (err) {
+            console.error("Failed to create conversation:", err);
+            // Optional: handle failure UI
+          } finally {
+            isCreatingConversationRef.current = false;
+            setIsCreatingConversation(false);
+          }
+
+          return;
+        }
+
+        if (!conversationId) return;
+
+        // Existing conversation path
+        socketService.sendDM(conversationId, contentTrimmed, msgTempId);
+
+        dispatch(
+          addDMMessage({
+            conversationId,
+            message: {
+              ...optimisticMsg,
+              conversation_id: conversationId,
+              sender: {
+                id: currentUser?.id,
+                display_name:
+                  currentUser?.display_name || currentUser?.name || "Bạn",
+                avatar_url: currentUser?.avatar || null,
+              },
             },
-            pending: true,
-          },
-        })
-      );
+          }),
+        );
 
-      // Stop typing
-      socketService.dmTyping(conversationId, false);
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = null;
+        // Stop typing
+        socketService.dmTyping(conversationId, false);
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current);
+          typingTimeoutRef.current = null;
+        }
+      } else {
+        // Legacy: dispatch to Redux for non-DM
+        const newMessage = {
+          id: Date.now(),
+          sender: "You",
+          avatar: "Y",
+          timestamp: new Date().toLocaleTimeString("vi-VN", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          content,
+          isPinned: false,
+          replyTo: replyToMsg || null,
+        };
+        dispatch(addMessage({ roomId: room, message: newMessage }));
       }
-    } else {
-      // Legacy: dispatch to Redux for non-DM
-      const newMessage = {
-        id: Date.now(),
-        sender: "You",
-        avatar: "Y",
-        timestamp: new Date().toLocaleTimeString("vi-VN", {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-        content,
-        isPinned: false,
-        replyTo: replyToMsg || null,
-      };
-      dispatch(addMessage({ roomId: room, message: newMessage }));
-    }
-  }, [isDM, activeConversationId, dmUser, currentUser, dispatch, room]);
+    },
+    [isDM, activeConversationId, dmUser, currentUser, dispatch, room],
+  );
 
   // Handle typing indicator
   const handleTyping = useCallback(() => {
@@ -539,11 +622,16 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
         sendingMessages={sendingMessages}
         isLoading={isDM && messagesLoading}
         conversationId={conversationId}
-
         onShowProfile={(senderName) => {
-          if (isDM && dmUser && senderName !== (currentUser?.display_name || currentUser?.name)) {
+          if (
+            isDM &&
+            dmUser &&
+            senderName !== (currentUser?.display_name || currentUser?.name)
+          ) {
             dispatch(setSelectedUser(dmUser));
-          } else if (senderName !== (currentUser?.display_name || currentUser?.name)) {
+          } else if (
+            senderName !== (currentUser?.display_name || currentUser?.name)
+          ) {
             dispatch(
               setSelectedUser({
                 id: senderName.toLowerCase(),
@@ -563,7 +651,6 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
       <ChatInput
         isDark={isDark}
         placeholder={placeholder}
-
         onSend={handleSend}
         onTyping={handleTyping}
         onStopTyping={handleStopTyping}
@@ -572,7 +659,14 @@ function ChatArea({ activeView, activeRoom, onToggleRoomList, onToggleMemberList
   );
 }
 
-function ChatAreaWrapper({ isCreatingRoom, onCancelCreateRoom, isRoomSettingsOpen, onOpenRoomSettings, onCloseRoomSettings, ...props }) {
+function ChatAreaWrapper({
+  isCreatingRoom,
+  onCancelCreateRoom,
+  isRoomSettingsOpen,
+  onOpenRoomSettings,
+  onCloseRoomSettings,
+  ...props
+}) {
   const appState = useSelector((state) => state.app);
   const { isDark } = useSelector((state) => state.theme);
   const view = props.activeView || appState.activeView;
