@@ -27,6 +27,7 @@ function ChatInput({
   onSend,
   onTyping,
   onStopTyping,
+  typingSender,
 }) {
   const [showMentions, setShowMentions] = useState(false);
   const [mentionFilter, setMentionFilter] = useState("");
@@ -40,8 +41,6 @@ function ChatInput({
   const fileInputRef = useRef(null);
 
   const placeholderText = placeholder;
-
-
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -352,108 +351,148 @@ function ChatInput({
   return (
     <div
       ref={containerRef}
-      className="px-4 py-3 border-t shrink-0 relative"
+      className="border-t shrink-0 relative"
       style={{
         borderColor: "var(--border-primary)",
         background: "var(--bg-surface-secondary)",
       }}
     >
-      {/* File attachment preview */}
-      {selectedFiles.length > 0 && (
-        <FileAttachmentPreview
-          files={selectedFiles}
-          onRemove={handleRemoveFile}
-          isDark={isDark}
-        />
+      {/* Typing indicator — nằm TRÊN box input, absolute position */}
+      {typingSender && (
+        <div className="absolute top-[-28px] left-0 flex items-center gap-2 px-4 pt-2 pb-1">
+          <span className="text-xs italic" style={{ color: "var(--primary)" }}>
+            {typingSender} đang nhập
+          </span>
+          <span className="flex gap-0.5">
+            <span
+              className="w-1 h-1 rounded-full animate-bounce"
+              style={{
+                background: "var(--primary)",
+                animationDelay: "0ms",
+              }}
+            />
+            <span
+              className="w-1 h-1 rounded-full animate-bounce"
+              style={{
+                background: "var(--primary)",
+                animationDelay: "150ms",
+              }}
+            />
+            <span
+              className="w-1 h-1 rounded-full animate-bounce"
+              style={{
+                background: "var(--primary)",
+                animationDelay: "300ms",
+              }}
+            />
+          </span>
+        </div>
       )}
 
-      {showMentions && (
-        <div
-          className="absolute bottom-full left-4 right-4 mb-2 rounded-lg shadow-lg border overflow-hidden z-50"
-          style={{
-            background: isDark ? "var(--bg-surface-secondary)" : "#fff",
-            borderColor: "var(--border-primary)",
-          }}
-        >
-          <MentionSuggestions
-            onSelect={handleMentionSelect}
+      <div className="px-4 py-3">
+        {/* File attachment preview */}
+        {selectedFiles.length > 0 && (
+          <FileAttachmentPreview
+            files={selectedFiles}
+            onRemove={handleRemoveFile}
             isDark={isDark}
-            filterText={mentionFilter}
-            selectedIndex={selectedMentionIndex}
           />
-        </div>
-      )}
+        )}
 
-      <div
-        className="chat-input-wrapper flex items-center gap-2 border rounded-lg p-1 transition-colors relative"
-        style={{
-          background: "var(--input-bg)",
-          borderColor: "var(--input-border)",
-        }}
-        onFocus={(e) => (e.currentTarget.style.borderColor = "var(--primary)")}
-        onBlur={(e) =>
-          (e.currentTarget.style.borderColor = "var(--input-border)")
-        }
-      >
-        <div className={`chat-input-placeholder ${isEmpty ? "" : "hidden"}`}>
-          {placeholderText}
-        </div>
+        {showMentions && (
+          <div
+            className="absolute bottom-full left-4 right-4 mb-2 rounded-lg shadow-lg border overflow-hidden z-50"
+            style={{
+              background: isDark ? "var(--bg-surface-secondary)" : "#fff",
+              borderColor: "var(--border-primary)",
+            }}
+          >
+            <MentionSuggestions
+              onSelect={handleMentionSelect}
+              isDark={isDark}
+              filterText={mentionFilter}
+              selectedIndex={selectedMentionIndex}
+            />
+          </div>
+        )}
+
         <div
-          ref={editorRef}
-          contentEditable
-          className="flex-1 border-none bg-transparent px-3 py-2 text-sm outline-none font-sans min-h-9 max-h-32 overflow-y-auto relative z-10"
+          className="chat-input-wrapper border rounded-lg p-1 transition-colors relative"
           style={{
-            color: "var(--input-text)",
+            background: "var(--input-bg)",
+            borderColor: "var(--input-border)",
           }}
-          onInput={handleInput}
-          onKeyDown={handleKeyDown}
-          suppressContentEditableWarning
-        />
-        {/* Hidden file input */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.svg"
-          multiple
-          className="hidden"
-          onChange={handleFileSelect}
-        />
-        <button
-          type="button"
-          className="w-9 h-9 border-none rounded-md cursor-pointer flex items-center justify-center transition-colors"
-          style={{
-            background: "transparent",
-            color: "var(--text-secondary)",
-          }}
-          onMouseEnter={(e) =>
-            (e.currentTarget.style.background = "var(--hover-primary)")
+          onFocus={(e) =>
+            (e.currentTarget.style.borderColor = "var(--primary)")
           }
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.background = "transparent")
+          onBlur={(e) =>
+            (e.currentTarget.style.borderColor = "var(--input-border)")
           }
-          onClick={handleAttachmentClick}
-          title="Đính kèm file (PDF, hình ảnh)"
         >
-          <FiPaperclip size={18} />
-        </button>
-        <button
-          type="button"
-          className="w-9 h-9 border-none rounded-md cursor-pointer flex items-center justify-center transition-colors"
-          style={{
-            background: "var(--primary)",
-            color: isDark ? "var(--bg-surface)" : "#fff",
-          }}
-          onMouseEnter={(e) =>
-            (e.currentTarget.style.background = "var(--primary-hover)")
-          }
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.background = "var(--primary)")
-          }
-          onClick={handleSend}
-          title="Gửi"
-        >
-          <IoSend size={18} />
-        </button>
+          <div className="flex items-center gap-2">
+            <div
+              className={`chat-input-placeholder ${isEmpty ? "" : "hidden"}`}
+            >
+              {placeholderText}
+            </div>
+            <div
+              ref={editorRef}
+              contentEditable
+              className="flex-1 border-none bg-transparent px-3 py-2 text-sm outline-none font-sans min-h-9 max-h-32 overflow-y-auto relative z-10"
+              style={{
+                color: "var(--input-text)",
+              }}
+              onInput={handleInput}
+              onKeyDown={handleKeyDown}
+              suppressContentEditableWarning
+            />
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.svg"
+              multiple
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+            <button
+              type="button"
+              className="w-9 h-9 border-none rounded-md cursor-pointer flex items-center justify-center transition-colors"
+              style={{
+                background: "transparent",
+                color: "var(--text-secondary)",
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = "var(--hover-primary)")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = "transparent")
+              }
+              onClick={handleAttachmentClick}
+              title="Đính kèm file (PDF, hình ảnh)"
+            >
+              <FiPaperclip size={18} />
+            </button>
+            <button
+              type="button"
+              className="w-9 h-9 border-none rounded-md cursor-pointer flex items-center justify-center transition-colors"
+              style={{
+                background: "var(--primary)",
+                color: isDark ? "var(--bg-surface)" : "#fff",
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = "var(--primary-hover)")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = "var(--primary)")
+              }
+              onClick={handleSend}
+              title="Gửi"
+            >
+              <IoSend size={18} />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

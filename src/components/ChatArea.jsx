@@ -618,7 +618,7 @@ function ChatArea({
             );
           }
         }}
-        isTyping={isBotRoom || (isDM && otherTyping)}
+        isTyping={isBotRoom}
       />
       <ChatInput
         isDark={isDark}
@@ -626,6 +626,8 @@ function ChatArea({
         onSend={handleSend}
         onTyping={handleTyping}
         onStopTyping={handleStopTyping}
+        typingSender={isDM && otherTyping ? dmUser?.name : null}
+        otherTyping={otherTyping}
       />
     </div>
   );

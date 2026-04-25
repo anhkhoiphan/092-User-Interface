@@ -125,41 +125,38 @@ function ChatMessage({
   );
 }
 
-function TypingIndicator({ isDark }) {
+function TypingIndicator({ isDark, senderName = "Đang nhập" }) {
   return (
-    <div className="flex gap-3 px-3 py-2">
-      <div
-        className="w-9 h-9 rounded-lg flex items-center justify-center text-sm font-semibold shrink-0"
-        style={{
-          background: "var(--tertiary-active)",
-          color: "var(--tertiary)",
-        }}
+    <div className="flex items-center gap-2 px-4 py-1.5" style={{ background: "transparent" }}>
+      <span
+        className="text-xs italic"
+        style={{ color: "var(--primary)" }}
       >
-        🤖
-      </div>
-      <div className="flex items-center gap-1">
-        <div
-          className="w-2 h-2 rounded-full animate-pulse"
+        {senderName} đang nhập
+      </span>
+      <span className="flex gap-0.5">
+        <span
+          className="w-1 h-1 rounded-full animate-bounce"
           style={{
-            background: "var(--tertiary)",
+            background: "var(--primary)",
             animationDelay: "0ms",
           }}
         />
-        <div
-          className="w-2 h-2 rounded-full animate-pulse"
+        <span
+          className="w-1 h-1 rounded-full animate-bounce"
           style={{
-            background: "var(--tertiary)",
+            background: "var(--primary)",
             animationDelay: "150ms",
           }}
         />
-        <div
-          className="w-2 h-2 rounded-full animate-pulse"
+        <span
+          className="w-1 h-1 rounded-full animate-bounce"
           style={{
-            background: "var(--tertiary)",
+            background: "var(--primary)",
             animationDelay: "300ms",
           }}
         />
-      </div>
+      </span>
     </div>
   );
 }
@@ -265,7 +262,6 @@ function ChatMessages({
   chatMessages,
   dmUser,
   onReply,
-  isTyping,
   onEdit,
   onShowProfile,
   hasNoSelection,
@@ -357,7 +353,7 @@ function ChatMessages({
 
   const hasMessages = chatMessages.length > 0;
 
-  const isEmpty = !hasMessages && !isTyping && !isLoading;
+  const isEmpty = !hasMessages && !isLoading;
 
   return (
     <div
@@ -425,7 +421,7 @@ function ChatMessages({
               onShowProfile={onShowProfile}
             />
           ))}
-          {isTyping && <TypingIndicator isDark={isDark} />}
+          {/* Typing indicator removed — now shown in ChatInput instead */}
         </div>
       )}
     </div>
