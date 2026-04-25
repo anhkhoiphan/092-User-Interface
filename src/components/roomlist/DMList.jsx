@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, memo } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { FiMessageSquare, FiUserPlus, FiSearch } from "react-icons/fi";
 import { setActiveRoom } from "../../store/slices/appSlice";
@@ -155,7 +155,7 @@ function EmptyState({ isDark, onStartChat }) {
   );
 }
 
-function DMItem({ dm, isDark, isActive, onClick, onAddFriend, isOnline }) {
+function DMItem({ dm, isDark, isActive, onClick, onAddFriend, isOnline, unreadCount }) {
   const dmColor = getUserColor(dm.name, dm.color);
   const [isHovered, setIsHovered] = useState(false);
 
@@ -189,15 +189,23 @@ function DMItem({ dm, isDark, isActive, onClick, onAddFriend, isOnline }) {
           <div className="text-sm font-medium" style={{ color: dmColor }}>
             {dm.name}
           </div>
-          {/* unread badge removed */}
+          {/* 🆕 Unread badge */}
+          {unreadCount > 0 && (
+            <span
+              className="px-1.5 py-0.5 rounded-full text-[10px] font-bold text-white flex-shrink-0"
+              style={{ background: "#ef4444", lineHeight: 1 }}
+            >
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
         </div>
         <div
           className="text-xs mt-0.5 truncate"
           style={{
-            color: dm.hasNewMessage
+            color: unreadCount > 0
               ? "var(--text-primary)"
               : "var(--text-secondary)",
-            fontWeight: dm.hasNewMessage ? 500 : 400,
+            fontWeight: unreadCount > 0 ? 500 : 400,
           }}
         >
           {dm.lastMessage || (dm.isBot ? "Trợ lý AI" : "Bắt đầu trò chuyện")}
@@ -210,7 +218,7 @@ function DMItem({ dm, isDark, isActive, onClick, onAddFriend, isOnline }) {
 function DMList({ activeRoom, setActiveRoom: setActiveRoomProp }) {
   const dispatch = useDispatch();
   const { isDark } = useSelector((state) => state.theme);
-  const { loading: dmLoading, conversations, conversationsFetched } = useSelector((state) => state.dm);
+  const { loading: dmLoading, conversations, conversationsFetched, unreadCounts } = useSelector((state) => state.dm);
   console.log("[DMList] Render, conversations:", conversations.length, "fetched:", conversationsFetched);
   const [sentRequests, setSentRequests] = useState([]);
 
@@ -312,6 +320,7 @@ function DMList({ activeRoom, setActiveRoom: setActiveRoomProp }) {
                 onClick={() => handleNavigateToChat(dm)}
                 onAddFriend={handleAddFriend}
                 isOnline={getUserOnlineStatus(dm.userId).online}
+                unreadCount={unreadCounts[dm.id] || 0}
               />
             ))}
           </DMListSection>
@@ -325,4 +334,4 @@ function DMList({ activeRoom, setActiveRoom: setActiveRoomProp }) {
   );
 }
 
-export default DMList;
+export default memo(DMList);

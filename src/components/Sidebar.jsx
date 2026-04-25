@@ -17,6 +17,7 @@ function Sidebar() {
     (state) => state.app,
   );
   const { isDark } = useSelector((state) => state.theme);
+  const { totalUnreadCount } = useSelector((state) => state.dm);
 
   const currentView = isSettings ? "settings" : activeView;
 
@@ -31,6 +32,7 @@ function Sidebar() {
           onClick={() => {
             dispatch(navigateToMessages());
           }}
+          unreadCount={totalUnreadCount}
         />
         {spaces.map((space) => (
           <SpaceIcon

@@ -1,6 +1,6 @@
 import { FiMessageSquare } from "react-icons/fi";
 
-function MessagesButton({ isActive, onClick }) {
+function MessagesButton({ isActive, onClick, unreadCount }) {
   return (
     <div
       className="w-10 h-10 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-150 relative"
@@ -27,6 +27,16 @@ function MessagesButton({ isActive, onClick }) {
       }}
     >
       <FiMessageSquare size={20} />
+      
+      {/* 🆕 Unread badge */}
+      {unreadCount > 0 && (
+        <span
+          className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center px-1"
+          style={{ zIndex: 10 }}
+        >
+          {unreadCount > 99 ? "99+" : unreadCount}
+        </span>
+      )}
     </div>
   );
 }

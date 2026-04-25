@@ -39,5 +39,10 @@ export const dmService = {
 
   searchUsers: (query) => api.get("/users/search", { params: { q: query } }),
   getUserProfile: (userId) => api.get(`/users/${userId}`),
-  getUserStatus: (userId) => api.get(`/users/${userId}/status`),
+
+  // 🆕 Batch status — one call for multiple users (replaces getUserStatus polling)
+  getUsersStatus: (userIds) => api.post("/users/status", { userIds }),
+
+  // ❌ DEPRECATED: Use WebSocket + getUsersStatus instead
+  // getUserStatus: (userId) => api.get(`/users/${userId}/status`),
 };

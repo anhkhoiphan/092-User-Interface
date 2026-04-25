@@ -1,9 +1,11 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { FiPaperclip } from "react-icons/fi";
+import { useDispatch } from "react-redux";
 import { ReplyPreview } from "./MessageActions";
 import { renderMessageWithMentions } from "./MessageContent";
 import FileAttachment from "./FileAttachment";
 import { getUserColor } from "../../utils/userColor";
+import { fetchMessages } from "../../store/slices/dmSlice";
 
 function ChatMessage({
   msg,
@@ -271,11 +273,20 @@ function ChatMessages({
   isLoading,
   conversationId,
 }) {
+  const dispatch = useDispatch();
   const messagesContainerRef = useRef(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
   const prevLoadingRef = useRef(isLoading);
   const prevMessagesLengthRef = useRef(chatMessages.length);
   const prevConversationIdRef = useRef(conversationId);
+  const hasMoreMessagesRef = useRef(true);
+
+  // Reset pagination state when conversation changes
+  useEffect(() => {
+    setCurrentPage(1);
+    hasMoreMessagesRef.current = true;
+  }, [conversationId]);
 
   // Auto scroll to bottom when loading finishes, new messages arrive, or conversation changes
   useEffect(() => {
@@ -303,17 +314,46 @@ function ChatMessages({
   }, [isLoading, chatMessages.length, isLoadingMore, conversationId]);
 
   // Handle scroll event to detect when user reaches the top
-  const handleScroll = (e) => {
-    const container = e.target;
-    // Check if scrolled to top (within 10px threshold)
-    if (container.scrollTop < 10 && !isLoadingMore) {
-      setIsLoadingMore(true);
-      // Simulate loading older messages
-      setTimeout(() => {
-        setIsLoadingMore(false);
-      }, 1500);
-    }
-  };
+  const handleScroll = useCallback(
+    (e) => {
+      const container = e.target;
+      // Check if scrolled to top (within 10px threshold)
+      if (
+        container.scrollTop < 10 &&
+        !isLoadingMore &&
+        hasMoreMessagesRef.current &&
+        conversationId &&
+        !conversationId.toString().startsWith("temp-conv-")
+      ) {
+        setIsLoadingMore(true);
+        const nextPage = currentPage + 1;
+
+        dispatch(
+          fetchMessages({
+            conversationId,
+            page: nextPage,
+            limit: 50,
+          }),
+        )
+          .unwrap()
+          .then((result) => {
+            const fetched = result.messages || [];
+            if (fetched.length === 0) {
+              hasMoreMessagesRef.current = false;
+            } else {
+              setCurrentPage(nextPage);
+            }
+          })
+          .catch((err) => {
+            console.error("[ChatMessages] Failed to load more:", err);
+          })
+          .finally(() => {
+            setIsLoadingMore(false);
+          });
+      }
+    },
+    [isLoadingMore, currentPage, conversationId, dispatch],
+  );
 
   const hasMessages = chatMessages.length > 0;
 

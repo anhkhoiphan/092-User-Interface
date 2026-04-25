@@ -17,11 +17,8 @@ class SocketService {
 
     const token = localStorage.getItem("access_token");
     if (!token) {
-      // No access token, skipping connect
       return;
     }
-
-    // Connecting with token
 
     this.socket = io(`${SOCKET_URL}/chat`, {
       auth: { token },
@@ -32,37 +29,35 @@ class SocketService {
     });
 
     this.socket.on("connect", () => {
-      // Socket connected
+      console.log("[Socket] Connected:", this.socket.id);
       this._connected = true;
     });
 
     this.socket.on("disconnect", (reason) => {
-      // Socket disconnected
+      console.log("[Socket] Disconnected:", reason);
       this._connected = false;
     });
 
     this.socket.on("connect_error", (error) => {
-      // Socket connect error
+      console.error("[Socket] Connect error:", error.message);
     });
 
     this.socket.on("reconnect", (attemptNumber) => {
-      // Socket reconnected - re-join active DM rooms
       this._activeDMRooms.forEach((conversationId) => {
         this.joinDM(conversationId);
       });
     });
 
     this.socket.on("reconnect_error", (error) => {
-      // Socket reconnection error
+      console.error("[Socket] Reconnect error:", error.message);
     });
 
     this.socket.on("error", (error) => {
-      // Socket error
+      console.error("[Socket] Error:", error);
     });
 
-    // Connection ack from server
     this.socket.on("connected", (data) => {
-      // Socket server ack
+      console.log("[Socket] Server ack:", data);
     });
   }
 
@@ -71,6 +66,7 @@ class SocketService {
       this.socket.disconnect();
       this.socket = null;
       this._connected = false;
+      this._activeDMRooms.clear();
     }
   }
 
@@ -98,7 +94,8 @@ class SocketService {
 
   sendDM(conversationId, content, tempId) {
     if (!conversationId) return;
-    const payload = { conversationId, content };
+    const clientSentAt = Date.now();
+    const payload = { conversationId, content, clientSentAt };
     if (tempId) payload.tempId = tempId;
     this.socket?.emit("sendDM", payload);
   }

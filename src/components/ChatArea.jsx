@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import { messages, directMessages, rooms } from "../data/mockData";
+// REMOVED: No mock data fallback — all messages come from Redux store only
 import { ChatHeader, ChatMessages, ChatInput } from "./chatarea/index.js";
 import { SettingsView } from "./settings/index.js";
 import { CreateRoomView } from "./createroom/index.js";
@@ -9,12 +9,13 @@ import { setSelectedUser, clearSelectedUser } from "../store/slices/chatSlice";
 import {
   fetchMessages,
   addMessage as addDMMessage,
+  updateMessage,
   setTyping,
   clearTyping,
   setActiveConversation,
   markConversationAsRead,
   createOrGetConversation,
-  markConversationAsFetched,
+  clearUnreadCount,
 } from "../store/slices/dmSlice";
 import { addMessage } from "../store/slices/messageSlice";
 import socketService from "../services/socket.service";
@@ -39,6 +40,7 @@ function ChatArea({
     typing: typingMap,
     messagesLoading,
     fetchedConversations,
+    preloadPhase,
   } = useSelector((state) => state.dm);
   const appState = useSelector((state) => state.app);
 
@@ -47,19 +49,20 @@ function ChatArea({
 
   const [dmUser, setDmUser] = useState(null);
   const [isTyping, setIsTypingState] = useState(false);
-  const [sendingMessages, setSendingMessages] = useState({}); // { [tempId]: { content, timestamp } }
+  const [sendingMessages, setSendingMessages] = useState({}); // { [tempId]: { content, timestamp, sendTime } }
+  const messageTimersRef = useRef({}); // { [tempId]: sendStartTime }
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
   const typingTimeoutRef = useRef(null);
-  const processedMessageIds = useRef(new Set());
-  const processedTimers = useRef([]);
   const isCreatingConversationRef = useRef(false);
 
-  const allRoomIds = Object.values(rooms)
-    .flat()
-    .map((r) => r.id);
   const isBotRoom = room === "tro-ly-ai";
+  // DM view: either explicit messages view, or a room that looks like a DM conversation
+  // (not a bot room and not a space room). Space rooms are set via setActiveRoom from
+  // SpaceRoomList which uses mock room IDs. Since we no longer import mock rooms,
+  // we detect DM by: view === "messages" OR room is a UUID-like conversation ID.
   const isDM =
-    view === "messages" || (room && !allRoomIds.includes(room) && !isBotRoom);
+    view === "messages" ||
+    (room && !isBotRoom && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(room));
 
   // Move useSelector hooks to top (was at line 281)
   const userMessagesMap = useSelector((state) => state.message.userMessages);
@@ -111,15 +114,13 @@ function ChatArea({
     }
   }, [room, isDM, selectedDMUser, activeConversation]);
 
-  // Reset processedMessageIds when conversation changes
-  useEffect(() => {
-    processedMessageIds.current.clear();
-    // Clear pending timers
-    processedTimers.current.forEach((timer) => clearTimeout(timer));
-    processedTimers.current = [];
-  }, [activeConversationId]);
 
-  // Join/leave DM via WebSocket - single effect
+
+  // Join DM via WebSocket when opening a conversation
+  // NOTE: We intentionally do NOT leaveDM on cleanup.
+  // Once joined, the user stays in the DM room to receive real-time messages
+  // even when switching to another conversation or tab.
+  // leaveDM is only called on logout (in authSlice).
   useEffect(() => {
     if (
       !isDM ||
@@ -130,13 +131,14 @@ function ChatArea({
 
     socketService.joinDM(activeConversationId);
     dispatch(markConversationAsRead(activeConversationId));
-
-    return () => {
-      socketService.leaveDM(activeConversationId);
-    };
+    
+    // 🆕 Clear unread count when opening conversation
+    dispatch(clearUnreadCount({ conversationId: activeConversationId }));
   }, [isDM, activeConversationId, dispatch]);
 
   // Fetch messages when active conversation changes — only if not already fetched
+  // AND preload is complete. If preload is still running, messages will arrive
+  // via setMessagesPreloaded soon — no need to duplicate the API call.
   useEffect(() => {
     if (
       !isDM ||
@@ -144,11 +146,20 @@ function ChatArea({
       activeConversationId.toString().startsWith("temp-conv-")
     )
       return;
+
+    // If preload is still in progress, skip fetching — messages are coming.
+    // This prevents duplicate API calls when user clicks a conversation
+    // before preloadDMData finishes.
+    if (preloadPhase === "conversations" || preloadPhase === "messages") {
+      console.log("[ChatArea] Preload in progress, skipping fetch for:", activeConversationId);
+      return;
+    }
+
     const isFetched = fetchedConversations[activeConversationId];
     console.log("[ChatArea] Check fetch:", {
       activeConversationId,
       isFetched,
-      fetchedConversations,
+      preloadPhase,
     });
     if (isFetched) return; // Skip: already cached
     dispatch(
@@ -158,85 +169,37 @@ function ChatArea({
         limit: 50,
       }),
     );
-  }, [isDM, activeConversationId, dispatch, fetchedConversations]);
+  }, [isDM, activeConversationId, dispatch, fetchedConversations, preloadPhase]);
 
-  // Use refs to keep stable handler references and avoid duplicate listeners
-  const activeConversationIdRef = useRef(activeConversationId);
-  useEffect(() => {
-    activeConversationIdRef.current = activeConversationId;
-  }, [activeConversationId]);
+  // 🆕 REMOVED: WebSocket listeners for newDM/dmSent/dmTyping/dmRead
+  // These are now handled globally in App.jsx (Single Source of Truth).
+  // ChatArea only reads from Redux store.
+  //
+  // Kept: dmTyping listener for typing indicator (only relevant when viewing a conversation)
+  // Kept: dmRead listener for read receipts (only relevant when viewing a conversation)
+  // Kept: dmSent listener for optimistic UI cleanup
 
-  const currentUserRef = useRef(currentUser);
-  useEffect(() => {
-    currentUserRef.current = currentUser;
-  }, [currentUser]);
-
-  // Listen to WebSocket events for this DM - register once only
   useEffect(() => {
     if (!isDM) return;
 
-    const handleNewDM = (data) => {
-      if (!data?.id) return;
-      if (processedMessageIds.current.has(data.id)) return;
-      processedMessageIds.current.add(data.id);
-      const timer = setTimeout(
-        () => processedMessageIds.current.delete(data.id),
-        60000,
-      );
-      processedTimers.current.push(timer);
-
-      const conversationId = data.conversation_id || data.conversationId;
-      const currentConvId = activeConversationIdRef.current;
-
-      // Always cache the message regardless of which conversation is active
-      dispatch(
-        addDMMessage({
-          conversationId,
-          message: {
-            id: data.id,
-            conversation_id: conversationId,
-            sender_id: data.sender_id,
-            content: data.content,
-            is_read: data.is_read ?? false,
-            created_at: data.created_at || data.timestamp,
-            sender: data.sender,
-          },
-        }),
-      );
-
-      // Note: We do NOT mark conversation as fetched here.
-      // Only mark as fetched after a full API fetch (page 1) so that
-      // opening a conversation for the first time still loads historical messages.
-
-      // If this is the currently active conversation, also update UI state
-      if (conversationId === currentConvId) {
-        setSendingMessages((prev) => {
-          const next = { ...prev };
-          if (data.tempId && next[data.tempId]) {
-            delete next[data.tempId];
-          } else {
-            Object.keys(next).forEach((key) => {
-              if (
-                next[key].content === data.content &&
-                data.sender_id === currentUserRef.current?.id
-              ) {
-                delete next[key];
-              }
-            });
-          }
-          return next;
-        });
-      }
-    };
-
     const handleDmSent = (data) => {
-      if (data.success && data.message) {
-        const currentConvId = activeConversationIdRef.current;
+      console.log("[DM Debug] dmSent event fired:", data);
+      if (data.success) {
+        const tempId = data.tempId;
+        const now = Date.now();
+        if (tempId && messageTimersRef.current[tempId]) {
+          const serverProcessTime = now - messageTimersRef.current[tempId];
+          console.log(
+            `%c[DM Latency] SEND | serverProcess: ${serverProcessTime}ms | tempId: ${tempId}`,
+            "color: #22c55e; font-weight: bold;",
+          );
+          delete messageTimersRef.current[tempId];
+        }
         setSendingMessages((prev) => {
           const next = { ...prev };
           if (data.tempId && next[data.tempId]) {
             delete next[data.tempId];
-          } else {
+          } else if (data.message?.content) {
             Object.keys(next).forEach((key) => {
               if (next[key].content === data.message.content) {
                 delete next[key];
@@ -245,21 +208,11 @@ function ChatArea({
           }
           return next;
         });
-        dispatch(
-          addDMMessage({
-            conversationId: currentConvId,
-            message: {
-              ...data.message,
-              conversation_id: currentConvId,
-            },
-          }),
-        );
       }
     };
 
     const handleDmTyping = (data) => {
-      const currentConvId = activeConversationIdRef.current;
-      if (data.conversationId === currentConvId) {
+      if (data.conversationId === activeConversationId) {
         if (data.isTyping) {
           dispatch(
             setTyping({
@@ -275,31 +228,28 @@ function ChatArea({
     };
 
     const handleDmRead = (data) => {
-      const currentConvId = activeConversationIdRef.current;
-      if (data.conversationId === currentConvId) {
-        dispatch({
-          type: "dm/updateMessage",
-          payload: {
-            conversationId: currentConvId,
+      if (data.conversationId === activeConversationId) {
+        dispatch(
+          updateMessage({
+            conversationId: activeConversationId,
             messageId: data.messageId,
             updates: { is_read: true },
-          },
-        });
+          }),
+        );
       }
     };
 
-    socketService.onNewDM(handleNewDM);
+    console.log("[DM Debug] Registering dmSent listener");
     socketService.onDmSent(handleDmSent);
     socketService.onDmTyping(handleDmTyping);
     socketService.onDmRead(handleDmRead);
 
     return () => {
-      socketService.off("newDM", handleNewDM);
       socketService.off("dmSent", handleDmSent);
       socketService.off("dmTyping", handleDmTyping);
       socketService.off("dmRead", handleDmRead);
     };
-  }, [isDM, dispatch]);
+  }, [isDM, activeConversationId, dispatch]);
 
   // Build messages for display
   // Use activeConversationId if available, fallback to room for existing conversations
@@ -319,7 +269,7 @@ function ChatArea({
 
   // Convert API messages to UI format
   const apiMessages = sortedDmMessages.map((msg) => {
-    const isOwn = msg.sender_id === currentUser?.id;
+    const isOwn = String(msg.sender_id) === String(currentUser?.id);
     const sender = isOwn
       ? currentUser?.display_name || currentUser?.name || "Bạn"
       : msg.sender?.display_name || "Unknown";
@@ -358,14 +308,8 @@ function ChatArea({
     };
   });
 
-  // Combine with mock data for non-DM or fallback
-  const mockMessages = isDM ? directMessages[room] || [] : messages[room] || [];
-  const userMessages = userMessagesMap[room] || [];
-
-  const chatMessages =
-    isDM && activeConversationId
-      ? apiMessages
-      : [...mockMessages, ...userMessages];
+  // Messages ONLY from Redux store — no mock data fallback
+  const chatMessages = isDM ? apiMessages : (userMessagesMap[room] || []);
 
   // Typing indicator from other user
   const otherTyping =
@@ -420,14 +364,35 @@ function ChatArea({
         };
 
         // Track sending message
+        const sendStartTime = Date.now();
+        messageTimersRef.current[msgTempId] = sendStartTime;
         setSendingMessages((prev) => ({
           ...prev,
-          [msgTempId]: { content: contentTrimmed, timestamp: Date.now() },
+          [msgTempId]: { content: contentTrimmed, timestamp: sendStartTime },
         }));
+
+        // Log send start
+        console.log(
+          `%c[DM Latency] START | tempId: ${msgTempId} | conv: ${conversationId || "NEW"}`,
+          "color: #f59e0b; font-weight: bold;",
+        );
 
         // Lazy create conversation if not exists
         if (!conversationId && dmUser?.id) {
-          if (isCreatingConversationRef.current) return;
+          if (isCreatingConversationRef.current) {
+            // Queue the message instead of dropping it
+            console.warn("[ChatArea] Conversation creation in progress, message queued");
+            // Show feedback to user
+            setSendingMessages((prev) => ({
+              ...prev,
+              [msgTempId]: {
+                content: contentTrimmed,
+                timestamp: Date.now(),
+                queued: true,
+              },
+            }));
+            return;
+          }
           isCreatingConversationRef.current = true;
           setIsCreatingConversation(true);
 
@@ -483,7 +448,14 @@ function ChatArea({
             }
           } catch (err) {
             console.error("Failed to create conversation:", err);
-            // Optional: handle failure UI
+            // Mark message as failed
+            setSendingMessages((prev) => ({
+              ...prev,
+              [msgTempId]: {
+                ...prev[msgTempId],
+                failed: true,
+              },
+            }));
           } finally {
             isCreatingConversationRef.current = false;
             setIsCreatingConversation(false);

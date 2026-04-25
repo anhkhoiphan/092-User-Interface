@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
+import { store } from "./store/store.js";
 import "./App.css";
 import Sidebar from "./components/Sidebar";
 import RoomList from "./components/RoomList";
@@ -12,11 +13,16 @@ import CreateAgentTips from "./components/createspace/CreateAgentTips";
 import ManageAgent from "./components/createspace/ManageAgent";
 import ManageAgentTips from "./components/createspace/ManageAgentTips";
 import LoginPage from "./pages/LoginPage";
+import AppLoadingScreen from "./components/AppLoadingScreen";
 import { initializeAuth } from "./store/slices/authSlice";
 import {
   addMessage as addDMMessage,
-  markConversationAsFetched,
   updateConversationLastMessage,
+  incrementUnreadCount,
+  preloadDMData,
+  addConversation,
+  updateMessage,
+  clearUnreadCount,
 } from "./store/slices/dmSlice";
 import socketService from "./services/socket.service";
 
@@ -24,7 +30,12 @@ function App() {
   const dispatch = useDispatch();
   const { activeView, activeSpace, activeRoom, searchQuery, isSettings } =
     useSelector((state) => state.app);
-  const { isAuthenticated, initialized, loading, isLoggingOut } = useSelector((state) => state.auth);
+  const { isAuthenticated, initialized, loading, isLoggingOut } = useSelector(
+    (state) => state.auth,
+  );
+  const { preloadComplete, preloadPhase, preloadError } = useSelector(
+    (state) => state.dm,
+  );
 
   const [createTab, setCreateTab] = useState("space");
   const [editingAgent, setEditingAgent] = useState(null);
@@ -33,6 +44,7 @@ function App() {
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
   const [isRoomSettingsOpen, setIsRoomSettingsOpen] = useState(false);
 
+  // 1. Auth initialization
   useEffect(() => {
     if (window.location.pathname !== "/") {
       window.history.replaceState(null, "", "/");
@@ -42,7 +54,7 @@ function App() {
     }
   }, [dispatch, initialized, loading]);
 
-  // Connect WebSocket when authenticated
+  // 2. Connect WebSocket when authenticated
   useEffect(() => {
     if (isAuthenticated) {
       socketService.connect();
@@ -55,7 +67,20 @@ function App() {
     };
   }, [isAuthenticated]);
 
-  // Global WebSocket listener: always cache incoming DMs regardless of current view
+  // 🆕 3. Preload DM data after auth + socket connected
+  useEffect(() => {
+    if (!isAuthenticated || !initialized) return;
+    if (preloadComplete) return;
+
+    dispatch(preloadDMData());
+  }, [isAuthenticated, initialized, preloadComplete, dispatch]);
+
+  // ============================================
+  // Global WebSocket DM Listener — REGISTERED ONCE ONLY
+  // ============================================
+  // This effect runs ONLY when isAuthenticated changes (login/logout).
+  // The handler uses store.getState() to always read fresh Redux state,
+  // so it never needs to re-register when state changes.
   useEffect(() => {
     if (!isAuthenticated) return;
 
@@ -65,7 +90,44 @@ function App() {
       const conversationId = data.conversation_id || data.conversationId;
       if (!conversationId) return;
 
-      // Cache the message in Redux so it's available when user opens the conversation
+      // Log receive latency
+      const now = Date.now();
+      const isOwn = String(data.sender_id) === String(store.getState().auth.user?.id);
+      if (!isOwn && data.clientSentAt) {
+        const receiveDelay = now - data.clientSentAt;
+        console.log(
+          `%c[DM Latency] RECEIVE | delay: ${receiveDelay}ms | from: ${data.sender?.display_name || data.sender_id} | msgId: ${data.id}`,
+          "color: #3b82f6; font-weight: bold;",
+        );
+      }
+
+      // Always read fresh state from store — never stale closure
+      const state = store.getState();
+      const currentConversations = state.dm.conversations;
+      const currentActiveId = state.dm.activeConversationId;
+      const currentUserId = state.auth.user?.id;
+
+      // 0. Ensure conversation exists in list
+      const convExists = currentConversations.some((c) => c.id === conversationId);
+      if (!convExists && data.conversation) {
+        dispatch(addConversation(data.conversation));
+      } else if (!convExists && data.sender) {
+        dispatch(
+          addConversation({
+            id: conversationId,
+            other_user: data.sender,
+            last_message: {
+              id: data.id,
+              content: data.content,
+              created_at: data.created_at || data.timestamp,
+            },
+            unread_count: 0,
+            created_at: data.created_at || data.timestamp,
+          }),
+        );
+      }
+
+      // 1. Cache message into Redux
       dispatch(
         addDMMessage({
           conversationId,
@@ -78,15 +140,10 @@ function App() {
             created_at: data.created_at || data.timestamp,
             sender: data.sender,
           },
-        })
+        }),
       );
 
-      // Note: We do NOT mark conversation as fetched here.
-      // Only mark as fetched after a full API fetch (page 1) so that
-      // opening a conversation for the first time still loads historical messages.
-      // WebSocket messages are cached but the conversation is not "fully fetched" yet.
-
-      // Update last message in conversation list
+      // 2. Update last_message in conversation list
       dispatch(
         updateConversationLastMessage({
           conversationId,
@@ -95,25 +152,42 @@ function App() {
             content: data.content,
             created_at: data.created_at || data.timestamp,
           },
-        })
+        }),
+      );
+
+      // 3. Increment unread if NOT the currently active conversation
+      const isOwnMessage = String(data.sender_id) === String(currentUserId);
+      if (conversationId !== currentActiveId && !isOwnMessage) {
+        dispatch(incrementUnreadCount({ conversationId }));
+      }
+    };
+
+    // Handle when other user reads our messages
+    const handleDmMarkedRead = (data) => {
+      if (!data?.conversationId || !data?.messageId) return;
+      dispatch(
+        updateMessage({
+          conversationId: data.conversationId,
+          messageId: data.messageId,
+          updates: { is_read: true },
+        }),
       );
     };
 
     socketService.onNewDM(handleNewDM);
+    socketService.onDmMarkedRead(handleDmMarkedRead);
 
     return () => {
-      socketService.off("newDM", handleNewDM);
+      socketService.offEvent("newDM");
+      socketService.offEvent("dmMarkedRead");
     };
   }, [isAuthenticated, dispatch]);
 
   const currentView = isSettings ? "settings" : activeView;
 
-  if (!initialized || isLoggingOut) {
-    return (
-      <div className="w-screen h-screen flex items-center justify-center bg-linear-to-br from-white via-indigo-100 to-blue-200">
-        <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-500 rounded-full animate-spin" />
-      </div>
-    );
+  // Not initialized yet (checking auth state) OR logging out OR preload in progress
+  if (!initialized || isLoggingOut || (isAuthenticated && !preloadComplete)) {
+    return <AppLoadingScreen />;
   }
 
   if (!isAuthenticated) {
@@ -167,7 +241,11 @@ function App() {
       <Sidebar />
       {currentView === "createSpace" ? (
         <>
-          <RoomList activeView="createSpace" createTab={createTab} onCreateTabChange={setCreateTab} />
+          <RoomList
+            activeView="createSpace"
+            createTab={createTab}
+            onCreateTabChange={setCreateTab}
+          />
           {renderCreateContent()}
           {renderCreateTips()}
         </>

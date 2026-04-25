@@ -1,16 +1,14 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { dmService } from "../services/dm.service";
 import socketService from "../services/socket.service";
 import {
   fetchConversations,
-  updateConversationLastMessage,
-  setUnreadCount,
   updateUserStatus,
   updateUserProfile,
 } from "../store/slices/dmSlice";
 
-const POLLING_INTERVAL = 30000;
+const CONVERSATIONS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 const STUDYBOT = {
   id: "studybot",
@@ -42,8 +40,9 @@ function matchesStudyBot(query) {
 
 export function useDMList() {
   const dispatch = useDispatch();
-  const { conversations, onlineUsers, conversationsFetched } = useSelector((state) => state.dm);
-  console.log("[useDMList] Hook called, conversations:", conversations.length, "fetched:", conversationsFetched);
+  const { conversations, onlineUsers, conversationsFetched } = useSelector(
+    (state) => state.dm,
+  );
 
   const [searchResults, setSearchResults] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -51,97 +50,70 @@ export function useDMList() {
   const [error, setError] = useState(null);
   const [onlineStatus, setOnlineStatus] = useState({}); // { [userId]: { online, lastSeen } }
 
-  const statusPollingRef = useRef(null);
-  const processedMessageIds = useRef(new Set());
-
-  // Fetch conversations on mount — only if not already fetched
+  // Fetch conversations on mount — with localStorage TTL cache
   const isFetchingRef = useRef(false);
   useEffect(() => {
-    if (conversationsFetched) return; // Skip: already cached
+    if (conversationsFetched) return; // Skip: already in Redux
+
+    // Check localStorage cache
+    const lastFetch = localStorage.getItem("dm_conversations_last_fetch");
+    const now = Date.now();
+    if (lastFetch && now - parseInt(lastFetch, 10) < CONVERSATIONS_CACHE_TTL) {
+      return; // Cache still valid
+    }
+
     if (isFetchingRef.current) return; // Prevent duplicate requests
     isFetchingRef.current = true;
-    dispatch(fetchConversations());
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    dispatch(fetchConversations()).then(() => {
+      localStorage.setItem("dm_conversations_last_fetch", String(Date.now()));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch]);
 
-  // Listen to realtime updates via WebSocket
+  // 🆕 WebSocket listeners for online status — replaces polling
   useEffect(() => {
-    // New DM message
-    const handleNewDM = (data) => {
-      if (!data?.id) return;
-      if (processedMessageIds.current.has(data.id)) return;
-      processedMessageIds.current.add(data.id);
-      setTimeout(() => processedMessageIds.current.delete(data.id), 60000);
-
-      const conversationId = data.conversation_id || data.conversationId;
-      dispatch(
-        updateConversationLastMessage({
-          conversationId,
-          message: {
-            id: data.id,
-            content: data.content,
-            created_at: data.created_at || data.timestamp,
-          },
-        }),
-      );
-    };
-
-    // User status changed
-    const handleStatusChange = (data) => {
+    const handleUserStatusChanged = (data) => {
       if (!data?.userId) return;
-      dispatch(updateUserStatus({ userId: data.userId, status: data.status }));
       setOnlineStatus((prev) => ({
         ...prev,
         [data.userId]: {
           online: data.status === "online",
-          lastSeen: data.lastSeen || prev[data.userId]?.lastSeen || null,
+          lastSeen: data.lastSeen || null,
         },
       }));
+      dispatch(updateUserStatus({ userId: data.userId, status: data.status }));
     };
 
-    // Online users list
     const handleOnlineUsers = (data) => {
-      if (data?.users) {
-        // Update local online status map
-        const next = {};
-        data.users.forEach((uid) => {
-          next[uid] = { online: true, lastSeen: null };
+      if (!data?.users) return;
+      const next = {};
+      data.users.forEach((uid) => {
+        next[uid] = { online: true, lastSeen: null };
+      });
+      setOnlineStatus((prev) => {
+        const merged = { ...prev };
+        // Mark users not in list as offline
+        Object.keys(merged).forEach((uid) => {
+          if (!next[uid]) merged[uid] = { ...merged[uid], online: false };
         });
-        setOnlineStatus((prev) => {
-          // Keep previous lastSeen for offline users
-          const merged = { ...prev };
-          Object.keys(merged).forEach((uid) => {
-            if (!next[uid]) merged[uid] = { ...merged[uid], online: false };
-          });
-          Object.keys(next).forEach((uid) => {
-            merged[uid] = next[uid];
-          });
-          return merged;
+        // Mark users in list as online
+        Object.keys(next).forEach((uid) => {
+          merged[uid] = next[uid];
         });
-      }
+        return merged;
+      });
     };
 
-    // Connected ack
-    const handleConnected = (data) => {
-      if (data?.onlineUsers) {
-        const next = {};
-        data.onlineUsers.forEach((uid) => {
-          next[uid] = { online: true, lastSeen: null };
-        });
-        setOnlineStatus(next);
-      }
-    };
-
-    socketService.onNewDM(handleNewDM);
-    socketService.onUserStatusChanged(handleStatusChange);
+    socketService.onUserStatusChanged(handleUserStatusChanged);
     socketService.onOnlineUsers(handleOnlineUsers);
-    socketService.on("connected", handleConnected);
+
+    // Request initial online users list
+    socketService.getOnlineUsers();
 
     return () => {
-      socketService.off("newDM", handleNewDM);
-      socketService.off("userStatusChanged", handleStatusChange);
-      socketService.off("onlineUsers", handleOnlineUsers);
-      socketService.off("connected", handleConnected);
+      socketService.offEvent("userStatusChanged");
+      socketService.offEvent("onlineUsers");
     };
   }, [dispatch]);
 
@@ -196,7 +168,7 @@ export function useDMList() {
                   display_name: user.name,
                   avatar_url: user.avatar,
                 },
-              })
+              }),
             );
           }
         });
@@ -221,47 +193,6 @@ export function useDMList() {
       mounted = false;
     };
   }, [searchQuery, dispatch]);
-
-  // Polling online status for visible users
-  const fetchStatuses = useCallback(async (userIds) => {
-    if (!userIds.length) return;
-    const results = await Promise.allSettled(
-      userIds.map((id) => dmService.getUserStatus(id)),
-    );
-    setOnlineStatus((prev) => {
-      const next = { ...prev };
-      results.forEach((result, idx) => {
-        if (result.status === "fulfilled") {
-          const { online, lastSeen } = result.value.data || {};
-          next[userIds[idx]] = { online: !!online, lastSeen: lastSeen || null };
-        }
-      });
-      return next;
-    });
-  }, []);
-
-  useEffect(() => {
-    const visibleUserIds = searchQuery.trim()
-      ? searchResults.map((u) => u.userId).filter(Boolean)
-      : conversations.map((c) => c.other_user?.id).filter(Boolean);
-
-    if (!visibleUserIds.length) return;
-
-    fetchStatuses(visibleUserIds);
-
-    if (statusPollingRef.current) {
-      clearInterval(statusPollingRef.current);
-    }
-    statusPollingRef.current = setInterval(() => {
-      fetchStatuses(visibleUserIds);
-    }, POLLING_INTERVAL);
-
-    return () => {
-      if (statusPollingRef.current) {
-        clearInterval(statusPollingRef.current);
-      }
-    };
-  }, [conversations, searchResults, searchQuery, fetchStatuses]);
 
   // Normalize conversations for UI and sort by latest message (newest first)
   const normalizedConversations = [...conversations]

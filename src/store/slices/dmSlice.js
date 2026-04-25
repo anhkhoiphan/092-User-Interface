@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import { dmService } from "../../services/dm.service";
+import socketService from "../../services/socket.service";
 import { logout } from "./authSlice";
 
 // ==================== Async Thunks ====================
@@ -74,6 +75,84 @@ export const markConversationAsRead = createAsyncThunk(
   },
 );
 
+// 🆕 Preload all DM data: conversations + messages + join all WS rooms
+export const preloadDMData = createAsyncThunk(
+  "dm/preload",
+  async (_, { dispatch, rejectWithValue }) => {
+    try {
+      // ─── Phase 1: Fetch all conversations ───
+      dispatch(setPreloadPhase("conversations"));
+
+      const convResponse = await dmService.getConversations({ page: 1, limit: 100 });
+      const conversations =
+        convResponse.data?.data ||
+        convResponse.data?.conversations ||
+        convResponse.data ||
+        [];
+
+      // Dispatch conversations into Redux
+      dispatch(setConversationsPreloaded(conversations));
+
+      // ─── Phase 2: Fetch messages for all conversations ───
+      dispatch(setPreloadPhase("messages"));
+
+      const messagePromises = conversations.map(async (conv) => {
+        try {
+          const msgResponse = await dmService.getMessages(conv.id, {
+            page: 1,
+            limit: 50,
+          });
+          const messages =
+            msgResponse.data?.data ||
+            msgResponse.data?.messages ||
+            msgResponse.data ||
+            [];
+
+          return {
+            conversationId: conv.id,
+            messages,
+          };
+        } catch (err) {
+          console.warn(
+            `[preloadDMData] Failed to fetch messages for ${conv.id}:`,
+            err,
+          );
+          return { conversationId: conv.id, messages: [] };
+        }
+      });
+
+      const allMessages = await Promise.allSettled(messagePromises);
+
+      // Dispatch all messages into Redux
+      allMessages.forEach((result) => {
+        if (result.status === "fulfilled") {
+          dispatch(setMessagesPreloaded(result.value));
+        }
+      });
+
+      // ─── Phase 3: Join all DM rooms via WebSocket ───
+      conversations.forEach((conv) => {
+        socketService.joinDM(conv.id);
+      });
+
+      dispatch(setPreloadPhase("complete"));
+
+      return {
+        conversationCount: conversations.length,
+        messageCounts: allMessages.map((m) => ({
+          conversationId: m.value?.conversationId,
+          count: m.value?.messages?.length || 0,
+        })),
+      };
+    } catch (err) {
+      console.error("[preloadDMData] Preload failed:", err);
+      return rejectWithValue(
+        err.response?.data?.message || "Không thể tải dữ liệu tin nhắn",
+      );
+    }
+  },
+);
+
 // ==================== Slice ====================
 
 const initialState = {
@@ -90,6 +169,14 @@ const initialState = {
   messagesLoading: false,
   error: null,
   messagesError: null,
+  // 🆕 Preload state
+  preloadComplete: false,
+  preloadPhase: "idle", // 'idle' | 'conversations' | 'messages' | 'complete'
+  preloadError: null,
+  // 🆕 Total unread count for sidebar badge
+  totalUnreadCount: 0,
+  // 🆕 Track last read message per conversation
+  lastReadMessageId: {},
 };
 
 const dmSlice = createSlice({
@@ -232,12 +319,22 @@ const dmSlice = createSlice({
         state.conversations[idx] = {
           ...state.conversations[idx],
           last_message: message,
-          unread_count:
-            unreadCount ?? state.conversations[idx].unread_count + 1,
+          unread_count: unreadCount ?? state.conversations[idx].unread_count,
         };
         // Move to top
         const conv = state.conversations.splice(idx, 1)[0];
         state.conversations.unshift(conv);
+      }
+
+      // Sync unreadCounts and totalUnreadCount if unreadCount is explicitly provided
+      if (typeof unreadCount === "number") {
+        const prevCount = state.unreadCounts[conversationId] || 0;
+        state.unreadCounts[conversationId] = unreadCount;
+        // Recalculate total by replacing the previous count with the new one
+        state.totalUnreadCount = Object.values(state.unreadCounts).reduce(
+          (a, b) => a + b,
+          0,
+        );
       }
     },
 
@@ -303,6 +400,97 @@ const dmSlice = createSlice({
     clearError: (state) => {
       state.error = null;
       state.messagesError = null;
+    },
+
+    // 🆕 Preload reducers
+    setPreloadPhase: (state, action) => {
+      state.preloadPhase = action.payload;
+    },
+
+    setConversationsPreloaded: (state, action) => {
+      state.conversations = action.payload;
+      state.conversationsFetched = true;
+    },
+
+    setMessagesPreloaded: (state, action) => {
+      const { conversationId, messages } = action.payload;
+      if (!state.messages[conversationId]) {
+        state.messages[conversationId] = [];
+      }
+
+      // Merge with existing messages (from WebSocket), dedupe
+      const existingIds = new Set(
+        state.messages[conversationId].map((m) => m.id),
+      );
+      const newMessages = messages.filter((m) => !existingIds.has(m.id));
+      state.messages[conversationId] = [
+        ...state.messages[conversationId],
+        ...newMessages,
+      ];
+
+      // Mark as fetched
+      state.fetchedConversations[conversationId] = true;
+    },
+
+    setPreloadComplete: (state) => {
+      state.preloadComplete = true;
+    },
+
+    resetPreloadState: (state) => {
+      state.preloadComplete = false;
+      state.preloadPhase = "idle";
+      state.preloadError = null;
+    },
+
+    // 🆕 Unread tracking reducers
+    incrementUnreadCount: (state, action) => {
+      const { conversationId } = action.payload;
+      const current = state.unreadCounts[conversationId] || 0;
+      state.unreadCounts[conversationId] = current + 1;
+
+      // Update total
+      state.totalUnreadCount = Object.values(state.unreadCounts).reduce(
+        (a, b) => a + b,
+        0,
+      );
+
+      // Also update in conversations array for DMList display
+      const idx = state.conversations.findIndex((c) => c.id === conversationId);
+      if (idx !== -1) {
+        state.conversations[idx].unread_count =
+          (state.conversations[idx].unread_count || 0) + 1;
+      }
+    },
+
+    // 🆕 Add a new conversation to the list (e.g. when receiving a message from a new conversation)
+    addConversation: (state, action) => {
+      const conv = action.payload;
+      const exists = state.conversations.find((c) => c.id === conv.id);
+      if (!exists) {
+        state.conversations.unshift(conv);
+      }
+    },
+
+    clearUnreadCount: (state, action) => {
+      const { conversationId } = action.payload;
+      delete state.unreadCounts[conversationId];
+
+      // Update total
+      state.totalUnreadCount = Object.values(state.unreadCounts).reduce(
+        (a, b) => a + b,
+        0,
+      );
+
+      // Also clear in conversations array
+      const idx = state.conversations.findIndex((c) => c.id === conversationId);
+      if (idx !== -1) {
+        state.conversations[idx].unread_count = 0;
+      }
+    },
+
+    setLastReadMessageId: (state, action) => {
+      const { conversationId, messageId } = action.payload;
+      state.lastReadMessageId[conversationId] = messageId;
     },
   },
   extraReducers: (builder) => {
@@ -396,6 +584,19 @@ const dmSlice = createSlice({
         }
         state.unreadCounts[conversationId] = 0;
       })
+      // 🆕 preloadDMData
+      .addCase(preloadDMData.pending, (state) => {
+        state.preloadPhase = "conversations";
+        state.preloadError = null;
+      })
+      .addCase(preloadDMData.fulfilled, (state) => {
+        state.preloadComplete = true;
+        state.preloadPhase = "complete";
+      })
+      .addCase(preloadDMData.rejected, (state, action) => {
+        state.preloadError = action.payload;
+        state.preloadPhase = "idle";
+      })
       // Reset on logout
       .addCase(logout.fulfilled, () => initialState)
       .addCase(logout.rejected, () => initialState);
@@ -421,6 +622,17 @@ export const {
   replaceTempConversation,
   resetDMState,
   clearError,
+  // 🆕 Preload exports
+  setPreloadPhase,
+  setConversationsPreloaded,
+  setMessagesPreloaded,
+  setPreloadComplete,
+  resetPreloadState,
+  // 🆕 Unread tracking exports
+  incrementUnreadCount,
+  clearUnreadCount,
+  setLastReadMessageId,
+  addConversation,
 } = dmSlice.actions;
 
 export default dmSlice.reducer;

@@ -65,6 +65,7 @@ function UserAvatar({ name, avatarUrl, isOnline, isDark, isBot, color }) {
 }
 
 function DMProfile({ isDark, dmUser }) {
+  const dispatch = useDispatch();
   const [profileColor, setProfileColor] = useState(null);
 
   useEffect(() => {
