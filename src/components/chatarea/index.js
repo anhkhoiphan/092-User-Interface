@@ -10,4 +10,4 @@ export {
   ReactionBar,
   ReactionPicker,
 } from "./MessageActions";
-export { renderMessageWithMentions } from "./MessageContent";
+export { renderMessageWithMentions, renderMarkdown } from "./MessageContent";

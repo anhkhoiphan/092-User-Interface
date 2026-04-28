@@ -18,6 +18,13 @@ import {
   clearUnreadCount,
 } from "../store/slices/dmSlice";
 import { addMessage } from "../store/slices/messageSlice";
+import {
+  addUserMessage as addAgentUserMessage,
+  sendAgentMessage,
+  setAgentTyping,
+  isAgentMention,
+  extractAgentQuery,
+} from "../store/slices/agentSlice";
 import socketService from "../services/socket.service";
 
 function ChatArea({
@@ -43,9 +50,13 @@ function ChatArea({
     preloadPhase,
   } = useSelector((state) => state.dm);
   const appState = useSelector((state) => state.app);
+  const { messages: agentMessagesMap, typing: agentTypingMap } = useSelector(
+    (state) => state.agent,
+  );
 
   const room = activeRoom || appState.activeRoom;
   const view = activeView || appState.activeView;
+  const isAgentRoom = appState.isAgentChat || room === "agent-dm";
 
   const [dmUser, setDmUser] = useState(null);
   const [isTyping, setIsTypingState] = useState(false);
@@ -61,8 +72,9 @@ function ChatArea({
   // SpaceRoomList which uses mock room IDs. Since we no longer import mock rooms,
   // we detect DM by: view === "messages" OR room is a UUID-like conversation ID.
   const isDM =
-    view === "messages" ||
-    (room && !isBotRoom && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(room));
+    !isAgentRoom &&
+    (view === "messages" ||
+      (room && !isBotRoom && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(room)));
 
   // Move useSelector hooks to top (was at line 281)
   const userMessagesMap = useSelector((state) => state.message.userMessages);
@@ -308,17 +320,31 @@ function ChatArea({
     };
   });
 
+  // Agent chat messages (UI-only, no DB)
+  const currentConvId = isAgentRoom ? "agent-dm" : activeConversationId;
+  const agentMessages = agentMessagesMap[currentConvId] || [];
+
   // Messages ONLY from Redux store — no mock data fallback
-  const chatMessages = isDM ? apiMessages : (userMessagesMap[room] || []);
+  const chatMessages = isAgentRoom
+    ? agentMessages
+    : isDM
+      ? [...apiMessages, ...agentMessages]
+      : (userMessagesMap[room] || []);
 
   // Typing indicator from other user
-  const otherTyping =
-    isDM && activeConversationId
-      ? typingMap[activeConversationId]?.isTyping
+  const isOtherUserTyping = isDM && activeConversationId
+    ? typingMap[activeConversationId]?.isTyping
+    : false;
+  const isAgentTyping = isAgentRoom
+    ? agentTypingMap["agent-dm"]?.isTyping
+    : isDM && activeConversationId
+      ? agentTypingMap[activeConversationId]?.isTyping
       : false;
+  const otherTyping = isOtherUserTyping || isAgentTyping;
 
-  const placeholder =
-    isBotRoom || (isDM && room === "studybot-dm")
+  const placeholder = isAgentRoom
+    ? "Hỏi Agent bất cứ điều gì..."
+    : isBotRoom || (isDM && room === "studybot-dm")
       ? "Hỏi trợ lý AI..."
       : dmUser
         ? `Nhắn tin cho ${dmUser.name}...`
@@ -328,6 +354,48 @@ function ChatArea({
   const handleSend = useCallback(
     async (content, replyToMsg, files) => {
       if (!content.trim()) return;
+
+      // Agent room: send to Agent API
+      if (isAgentRoom) {
+        const contentTrimmed = content.trim();
+        const now = Date.now();
+        const timestamp = new Date().toLocaleTimeString("vi-VN", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+
+        // Add user message to agent chat
+        dispatch(
+          addAgentUserMessage({
+            conversationId: "agent-dm",
+            message: {
+              id: `user-${now}`,
+              content: contentTrimmed,
+              sender: currentUser?.display_name || currentUser?.name || "Bạn",
+              sender_id: currentUser?.id || "user",
+              avatar:
+                currentUser?.display_name?.charAt(0).toUpperCase() ||
+                currentUser?.name?.charAt(0).toUpperCase() ||
+                "B",
+              timestamp,
+              isOwn: true,
+              isBot: false,
+              created_at: new Date().toISOString(),
+            },
+          }),
+        );
+
+        // Call Agent API
+        const senderId = currentUser?.display_name || currentUser?.name || "@User";
+        dispatch(
+          sendAgentMessage({
+            conversationId: "agent-dm",
+            senderId,
+            query: contentTrimmed,
+          }),
+        );
+        return;
+      }
 
       if (isDM) {
         // Guard: prevent chatting with self
@@ -485,6 +553,19 @@ function ChatArea({
           }),
         );
 
+        // Check if message mentions @agent — if so, also call Agent API
+        const agentQuery = extractAgentQuery(contentTrimmed);
+        if (agentQuery !== null && conversationId) {
+          const senderId = currentUser?.display_name || currentUser?.name || "@User";
+          dispatch(
+            sendAgentMessage({
+              conversationId,
+              senderId,
+              query: agentQuery || contentTrimmed,
+            }),
+          );
+        }
+
         // Stop typing
         socketService.dmTyping(conversationId, false);
         if (typingTimeoutRef.current) {
@@ -508,11 +589,12 @@ function ChatArea({
         dispatch(addMessage({ roomId: room, message: newMessage }));
       }
     },
-    [isDM, activeConversationId, dmUser, currentUser, dispatch, room],
+    [isDM, isAgentRoom, activeConversationId, dmUser, currentUser, dispatch, room],
   );
 
   // Handle typing indicator
   const handleTyping = useCallback(() => {
+    if (isAgentRoom) return; // No typing indicator for agent room
     if (!isDM || !activeConversationId) return;
 
     if (!isTyping) {
@@ -528,7 +610,7 @@ function ChatArea({
       setIsTypingState(false);
       socketService.dmTyping(activeConversationId, false);
     }, 3000);
-  }, [isDM, activeConversationId, isTyping]);
+  }, [isAgentRoom, isDM, activeConversationId, isTyping]);
 
   // Cleanup typing on unmount / before unload
   useEffect(() => {
@@ -548,6 +630,7 @@ function ChatArea({
   }, [isDM, activeConversationId]);
 
   const handleStopTyping = useCallback(() => {
+    if (isAgentRoom) return;
     if (!isDM || !activeConversationId) return;
     setIsTypingState(false);
     socketService.dmTyping(activeConversationId, false);
@@ -555,7 +638,7 @@ function ChatArea({
       clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = null;
     }
-  }, [isDM, activeConversationId]);
+  }, [isAgentRoom, isDM, activeConversationId]);
 
   return (
     <div
@@ -566,6 +649,7 @@ function ChatArea({
         isDark={isDark}
         activeRoom={room}
         isBotRoom={isBotRoom}
+        isAgentRoom={isAgentRoom}
         isDM={isDM}
         dmUser={dmUser}
         onToggleRoomList={onToggleRoomList}
@@ -590,7 +674,7 @@ function ChatArea({
         isDark={isDark}
         chatMessages={chatMessages}
         dmUser={dmUser}
-        hasNoSelection={isDM && !dmUser}
+        hasNoSelection={isDM && !dmUser && !isAgentRoom}
         sendingMessages={sendingMessages}
         isLoading={isDM && messagesLoading}
         conversationId={conversationId}
@@ -626,7 +710,13 @@ function ChatArea({
         onSend={handleSend}
         onTyping={handleTyping}
         onStopTyping={handleStopTyping}
-        typingSender={isDM && otherTyping ? dmUser?.name : null}
+        typingSender={
+          isAgentTyping
+            ? "Agent"
+            : isOtherUserTyping
+              ? dmUser?.name
+              : null
+        }
         otherTyping={otherTyping}
       />
     </div>

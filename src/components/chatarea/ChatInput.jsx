@@ -97,6 +97,7 @@ function ChatInput({
   };
 
   const handleMentionSelect = (user) => {
+    console.log("[ChatInput] Mention selected:", user);
     if (user === null) {
       setShowMentions(false);
       return;
@@ -116,14 +117,15 @@ function ChatInput({
     const beforeText = plainText.substring(0, atPosition);
     const afterText = plainText.substring(cursorOffset);
 
-    const mentionColor = getUserColor(user.name);
+    const mentionColor = user.isAgent ? "var(--tertiary)" : getUserColor(user.name);
     const mentionSpan = document.createElement("span");
     mentionSpan.className = "mention-tag";
     mentionSpan.contentEditable = "false";
     mentionSpan.style.cssText = `color: ${mentionColor}; font-weight: 600; cursor: pointer;`;
-    mentionSpan.textContent = `@${user.name}`;
-    mentionSpan.dataset.userId = user.id;
-    mentionSpan.dataset.userName = user.name;
+    mentionSpan.textContent = "@agent";
+    mentionSpan.dataset.userId = "agent";
+    mentionSpan.dataset.userName = "agent";
+    mentionSpan.dataset.isAgent = user.isAgent ? "true" : "false";
 
     // Rebuild editor content
     editorRef.current.innerHTML = "";
@@ -135,7 +137,6 @@ function ChatInput({
     editorRef.current.appendChild(mentionSpan);
 
     // Add a zero-width space followed by regular space after the mention
-    // This ensures the cursor can be placed after the mention
     const spaceNode = document.createTextNode("\u200B ");
     editorRef.current.appendChild(spaceNode);
 
@@ -143,7 +144,7 @@ function ChatInput({
       editorRef.current.appendChild(document.createTextNode(afterText));
     }
 
-    setMentions((prev) => [...prev, { id: user.id, name: user.name }]);
+    setMentions((prev) => [...prev, { id: "agent", name: "agent", isAgent: user.isAgent }]);
 
     // Focus editor and set cursor after the zero-width space + space
     editorRef.current.focus();
@@ -152,6 +153,11 @@ function ChatInput({
     selection.collapse(spaceNode, 2);
 
     setShowMentions(false);
+
+    // Log final content
+    setTimeout(() => {
+      console.log("[ChatInput] After mention, plainText:", getPlainText());
+    }, 0);
   };
 
   const handleSend = () => {

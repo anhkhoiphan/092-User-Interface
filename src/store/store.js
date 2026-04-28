@@ -6,6 +6,7 @@ import memberReducer from "./slices/memberSlice";
 import messageReducer from "./slices/messageSlice";
 import authReducer from "./slices/authSlice";
 import dmReducer from "./slices/dmSlice";
+import agentReducer from "./slices/agentSlice";
 
 export const store = configureStore({
   reducer: {
@@ -16,5 +17,6 @@ export const store = configureStore({
     message: messageReducer,
     auth: authReducer,
     dm: dmReducer,
+    agent: agentReducer,
   },
 });

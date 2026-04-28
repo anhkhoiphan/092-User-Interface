@@ -68,6 +68,7 @@ function ChatHeader({
   isDark,
   activeRoom,
   isBotRoom,
+  isAgentRoom,
   isDM,
   dmUser,
   onToggleRoomList,
@@ -80,21 +81,25 @@ function ChatHeader({
 
   const headerTitle = hasNoSelection
     ? "Tin nhắn"
-    : isBotRoom
-      ? "Trợ lý AI"
-      : isDM && dmUser
-        ? dmUser.name
-        : `# ${activeRoom}`;
+    : isAgentRoom
+      ? "Agent"
+      : isBotRoom
+        ? "Trợ lý AI"
+        : isDM && dmUser
+          ? dmUser.name
+          : `# ${activeRoom}`;
 
   const headerSubtitle = hasNoSelection
     ? "Chọn một cuộc trò chuyện để bắt đầu"
-    : isBotRoom
-      ? "Hỏi đáp với trợ lý AI"
-      : isDM && dmUser
-        ? dmUser.isOnline
-          ? "Đang hoạt động"
-          : "Ngoại tuyến"
-        : "Giải tích - tuần 1";
+    : isAgentRoom
+      ? "Trợ lý AI học tập"
+      : isBotRoom
+        ? "Hỏi đáp với trợ lý AI"
+        : isDM && dmUser
+          ? dmUser.isOnline
+            ? "Đang hoạt động"
+            : "Ngoại tuyến"
+          : "Giải tích - tuần 1";
 
   return (
     <div
@@ -104,14 +109,14 @@ function ChatHeader({
         background: "var(--bg-surface-secondary)",
       }}
     >
-      {(isBotRoom || (isDM && dmUser)) && (
+      {(isAgentRoom || isBotRoom || (isDM && dmUser)) && (
         <UserAvatar
-          name={isBotRoom ? "Trợ lý AI" : dmUser.name}
-          avatarUrl={isBotRoom ? "🤖" : dmUser.avatar}
-          color={isBotRoom ? null : dmUser?.color}
-          isOnline={isBotRoom ? true : dmUser?.isOnline}
+          name={isAgentRoom ? "Agent" : isBotRoom ? "Trợ lý AI" : dmUser.name}
+          avatarUrl={isAgentRoom ? "🤖" : isBotRoom ? "🤖" : dmUser.avatar}
+          color={isAgentRoom ? null : isBotRoom ? null : dmUser?.color}
+          isOnline={isAgentRoom ? true : isBotRoom ? true : dmUser?.isOnline}
           isDark={isDark}
-          isBot={isBotRoom}
+          isBot={isAgentRoom || isBotRoom}
         />
       )}
       <div className="min-w-0 flex-1">

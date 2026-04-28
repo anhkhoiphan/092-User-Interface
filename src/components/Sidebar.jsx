@@ -13,9 +13,8 @@ import { toggleTheme } from "../store/slices/themeSlice";
 
 function Sidebar() {
   const dispatch = useDispatch();
-  const { activeView, activeSpace, isSettings } = useSelector(
-    (state) => state.app,
-  );
+  const appState = useSelector((state) => state.app);
+  const { activeView, activeSpace, isSettings } = appState;
   const { isDark } = useSelector((state) => state.theme);
   const { totalUnreadCount } = useSelector((state) => state.dm);
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, memo } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { FiMessageSquare, FiUserPlus, FiSearch } from "react-icons/fi";
-import { setActiveRoom } from "../../store/slices/appSlice";
+import { setActiveRoom, openAgentChat, closeAgentChat } from "../../store/slices/appSlice";
 import { setSelectedDMUser } from "../../store/slices/chatSlice";
 import {
   setActiveConversation,
@@ -155,6 +155,73 @@ function EmptyState({ isDark, onStartChat }) {
   );
 }
 
+function AgentDMItem({ isDark, isActive, onClick }) {
+  const [isHovered, setIsHovered] = useState(false);
+
+  return (
+    <div
+      className="flex items-center px-3 py-2.5 rounded-md cursor-pointer transition-colors gap-2.5 mb-0.5"
+      style={{
+        background: isActive
+          ? "var(--primary-active)"
+          : isHovered
+            ? isDark
+              ? "rgba(255,255,255,0.05)"
+              : "rgba(0,0,0,0.03)"
+            : "transparent",
+        borderRadius: "8px",
+      }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onClick={onClick}
+    >
+      <div className="relative shrink-0">
+        <div
+          className="w-10 h-10 rounded-lg flex items-center justify-center text-lg font-semibold overflow-hidden"
+          style={{
+            background: "var(--tertiary-active)",
+            color: "var(--tertiary)",
+          }}
+        >
+          🤖
+        </div>
+        <div
+          className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2"
+          style={{
+            borderColor: isDark ? "var(--bg-surface-secondary)" : "#fff",
+            background: "var(--online)",
+          }}
+        />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <div
+            className="text-sm font-medium"
+            style={{ color: "var(--tertiary)" }}
+          >
+            Agent
+          </div>
+          <span
+            className="px-1.5 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0"
+            style={{
+              background: "var(--tertiary-active)",
+              color: "var(--tertiary)",
+            }}
+          >
+            AI
+          </span>
+        </div>
+        <div
+          className="text-xs mt-0.5 truncate"
+          style={{ color: "var(--text-secondary)" }}
+        >
+          Trợ lý AI học tập
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DMItem({ dm, isDark, isActive, onClick, onAddFriend, isOnline, unreadCount }) {
   const dmColor = getUserColor(dm.name, dm.color);
   const [isHovered, setIsHovered] = useState(false);
@@ -184,9 +251,9 @@ function DMItem({ dm, isDark, isActive, onClick, onAddFriend, isOnline, unreadCo
         isBot={dm.isBot}
         color={dm.color}
       />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <div className="text-sm font-medium" style={{ color: dmColor }}>
+      <div className="flex-1 min-w-0 overflow-hidden">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <div className="text-sm font-medium truncate" style={{ color: dmColor }}>
             {dm.name}
           </div>
           {/* 🆕 Unread badge */}
@@ -218,6 +285,7 @@ function DMItem({ dm, isDark, isActive, onClick, onAddFriend, isOnline, unreadCo
 function DMList({ activeRoom, setActiveRoom: setActiveRoomProp }) {
   const dispatch = useDispatch();
   const { isDark } = useSelector((state) => state.theme);
+  const appState = useSelector((state) => state.app);
   const { loading: dmLoading, conversations, conversationsFetched, unreadCounts } = useSelector((state) => state.dm);
   console.log("[DMList] Render, conversations:", conversations.length, "fetched:", conversationsFetched);
   const [sentRequests, setSentRequests] = useState([]);
@@ -241,7 +309,28 @@ function DMList({ activeRoom, setActiveRoom: setActiveRoomProp }) {
   // Only show loading if we truly have no data yet
   const isLoading = (hookLoading || dmLoading) && !conversationsFetched && conversations.length === 0;
 
+
+
+  const handleAddFriend = (user) => {
+    setSentRequests([...sentRequests, user.id]);
+    // Sent friend request
+  };
+
+  const handleFocusSearch = () => {
+    const input = document.querySelector("[data-dm-search]");
+    if (input) input.focus();
+  };
+
+  const handleOpenAgentChat = () => {
+    dispatch(openAgentChat());
+  };
+
   const handleNavigateToChat = async (user) => {
+    // Close agent chat when switching to a real DM
+    if (appState.isAgentChat) {
+      dispatch(closeAgentChat());
+    }
+
     dispatch(setSelectedDMUser(user));
 
     if (user.isBot) {
@@ -275,16 +364,6 @@ function DMList({ activeRoom, setActiveRoom: setActiveRoomProp }) {
     }
   };
 
-  const handleAddFriend = (user) => {
-    setSentRequests([...sentRequests, user.id]);
-    // Sent friend request
-  };
-
-  const handleFocusSearch = () => {
-    const input = document.querySelector("[data-dm-search]");
-    if (input) input.focus();
-  };
-
   const showEmpty =
     !isLoading && !isSearching && items.length === 0 && !isSearchingActive;
 
@@ -302,6 +381,17 @@ function DMList({ activeRoom, setActiveRoom: setActiveRoomProp }) {
         {isLoading && <LoadingDots />}
 
         {isSearching && <LoadingDots />}
+
+        {/* Agent item — always show at top */}
+        {!isSearchingActive && (
+          <DMListSection title="">
+            <AgentDMItem
+              isDark={isDark}
+              isActive={appState.isAgentChat}
+              onClick={handleOpenAgentChat}
+            />
+          </DMListSection>
+        )}
 
         {showEmpty && (
           <EmptyState isDark={isDark} onStartChat={handleFocusSearch} />

@@ -6,6 +6,7 @@ const initialState = {
   activeRoom: null,
   searchQuery: "",
   isSettings: false,
+  isAgentChat: false,
 };
 
 const appSlice = createSlice({
@@ -46,9 +47,20 @@ const appSlice = createSlice({
     openCreateSpace: (state) => {
       state.activeView = "createSpace";
       state.isSettings = false;
+      state.isAgentChat = false;
     },
     cancelCreateSpace: (state) => {
       state.activeView = "space";
+    },
+    openAgentChat: (state) => {
+      state.isAgentChat = true;
+      state.isSettings = false;
+      state.activeView = "messages";
+      state.activeRoom = "agent-dm";
+    },
+    closeAgentChat: (state) => {
+      state.isAgentChat = false;
+      state.activeRoom = null;
     },
   },
 });
@@ -65,6 +77,8 @@ export const {
   navigateToMessages,
   openCreateSpace,
   cancelCreateSpace,
+  openAgentChat,
+  closeAgentChat,
 } = appSlice.actions;
 
 export default appSlice.reducer;

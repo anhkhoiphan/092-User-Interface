@@ -88,7 +88,7 @@ function ChatMessage({
           className="text-sm leading-relaxed"
           style={{ color: "var(--text-primary)" }}
         >
-          {renderMessageWithMentions(msg.content, isDark, onShowProfile)}
+          {renderMessageWithMentions(msg.content, isDark, onShowProfile, msg.isBot)}
           {msg.isEdited && (
             <span
               className="ml-1 text-[10px] italic"
@@ -319,7 +319,8 @@ function ChatMessages({
         !isLoadingMore &&
         hasMoreMessagesRef.current &&
         conversationId &&
-        !conversationId.toString().startsWith("temp-conv-")
+        !conversationId.toString().startsWith("temp-conv-") &&
+        conversationId !== "agent-dm"
       ) {
         setIsLoadingMore(true);
         const nextPage = currentPage + 1;
