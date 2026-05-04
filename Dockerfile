@@ -3,8 +3,8 @@ FROM node:20-slim AS builder
 
 # Inject API URL lúc build (Vite bakes env vào JS bundle)
 # Override bằng Build variables trong HF Space Settings nếu cần
-ARG VITE_API_URL=https://anhkhoiphan-092-agent-api.hf.space/api
-ARG VITE_SOCKET_URL=https://anhkhoiphan-092-agent-api.hf.space
+ARG VITE_API_URL=https://anhkhoiphan-092-ui-core.hf.space/api
+ARG VITE_SOCKET_URL=https://anhkhoiphan-092-ui-core.hf.space
 
 ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_SOCKET_URL=$VITE_SOCKET_URL
