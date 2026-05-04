@@ -11,7 +11,7 @@ ENV VITE_SOCKET_URL=$VITE_SOCKET_URL
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --prefer-offline
+RUN npm install
 COPY . .
 RUN npm run build
 
