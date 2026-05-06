@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { dmUsers } from "../../data/mockData";
+import { useSelector } from "react-redux";
 
 function MentionSuggestions({
   onSelect,
@@ -10,10 +10,51 @@ function MentionSuggestions({
   const [selectedIndex, setSelectedIndex] = useState(externalSelectedIndex);
   const listRef = useRef(null);
 
+  // Get real users from Redux store (space members + DM conversations)
+  const { conversations } = useSelector((state) => state.dm);
+  const { membersMap } = useSelector((state) => state.space);
+
+  // Build user list from real data
+  const allUsers = (() => {
+    const users = [];
+    const seenIds = new Set();
+
+    // Add users from DM conversations
+    conversations.forEach((conv) => {
+      const ou = conv.other_user;
+      if (ou && !seenIds.has(ou.id)) {
+        seenIds.add(ou.id);
+        users.push({
+          id: ou.id,
+          name: ou.display_name || ou.name || "Unknown",
+          avatar: ou.display_name?.charAt(0).toUpperCase() || ou.name?.charAt(0).toUpperCase() || "?",
+          isBot: false,
+        });
+      }
+    });
+
+    // Add users from space members
+    Object.values(membersMap).flat().forEach((member) => {
+      if (member && !seenIds.has(member.id)) {
+        seenIds.add(member.id);
+        users.push({
+          id: member.id,
+          name: member.display_name || member.name || member.email || "Unknown",
+          avatar: member.display_name?.charAt(0).toUpperCase() || member.name?.charAt(0).toUpperCase() || "?",
+          isBot: false,
+        });
+      }
+    });
+
+    return users;
+  })();
+
   // Filter users based on filterText
-  const filteredUsers = dmUsers.filter((user) =>
+  const filteredUsers = allUsers.filter((user) =>
     user.name.toLowerCase().includes((filterText || "").toLowerCase()),
   );
+
+  const allSuggestions = filteredUsers;
 
   // Reset selected index when filter changes or external index changes
   useEffect(() => {
@@ -26,14 +67,14 @@ function MentionSuggestions({
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setSelectedIndex((prev) =>
-          prev < filteredUsers.length - 1 ? prev + 1 : prev,
+          prev < allSuggestions.length - 1 ? prev + 1 : prev,
         );
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         setSelectedIndex((prev) => (prev > 0 ? prev - 1 : prev));
-      } else if (e.key === "Enter" && filteredUsers[selectedIndex]) {
+      } else if (e.key === "Enter" && allSuggestions[selectedIndex]) {
         e.preventDefault();
-        onSelect(filteredUsers[selectedIndex]);
+        onSelect(allSuggestions[selectedIndex]);
       } else if (e.key === "Escape") {
         e.preventDefault();
         onSelect(null); // Close suggestions
@@ -42,7 +83,7 @@ function MentionSuggestions({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedIndex, filteredUsers, onSelect]);
+  }, [selectedIndex, allSuggestions, onSelect]);
 
   // Scroll selected item into view
   useEffect(() => {
@@ -73,7 +114,7 @@ function MentionSuggestions({
         background: isDark ? "var(--bg-surface-secondary)" : "#fff",
       }}
     >
-      {filteredUsers.map((user, index) => (
+      {allSuggestions.map((user, index) => (
         <button
           key={user.id}
           className={`w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors cursor-pointer`}

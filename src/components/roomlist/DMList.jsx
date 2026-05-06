@@ -184,18 +184,29 @@ function DMItem({ dm, isDark, isActive, onClick, onAddFriend, isOnline, unreadCo
         isBot={dm.isBot}
         color={dm.color}
       />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <div className="text-sm font-medium" style={{ color: dmColor }}>
-            {dm.name}
+      <div className="flex-1 min-w-0 overflow-hidden">
+        <div className="flex items-center justify-between min-w-0">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <div className="text-sm font-medium truncate" style={{ color: dmColor }}>
+              {dm.name}
+            </div>
+            {/* 🆕 Unread badge */}
+            {unreadCount > 0 && (
+              <span
+                className="px-1.5 py-0.5 rounded-full text-[10px] font-bold text-white flex-shrink-0"
+                style={{ background: "#ef4444", lineHeight: 1 }}
+              >
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
           </div>
-          {/* 🆕 Unread badge */}
-          {unreadCount > 0 && (
+          {/* 🆕 Last message time */}
+          {dm.lastMessageTime && (
             <span
-              className="px-1.5 py-0.5 rounded-full text-[10px] font-bold text-white flex-shrink-0"
-              style={{ background: "#ef4444", lineHeight: 1 }}
+              className="text-[10px] flex-shrink-0 ml-1"
+              style={{ color: "var(--text-muted)" }}
             >
-              {unreadCount > 99 ? "99+" : unreadCount}
+              {dm.lastMessageTime}
             </span>
           )}
         </div>
@@ -218,6 +229,7 @@ function DMItem({ dm, isDark, isActive, onClick, onAddFriend, isOnline, unreadCo
 function DMList({ activeRoom, setActiveRoom: setActiveRoomProp }) {
   const dispatch = useDispatch();
   const { isDark } = useSelector((state) => state.theme);
+  const appState = useSelector((state) => state.app);
   const { loading: dmLoading, conversations, conversationsFetched, unreadCounts } = useSelector((state) => state.dm);
   console.log("[DMList] Render, conversations:", conversations.length, "fetched:", conversationsFetched);
   const [sentRequests, setSentRequests] = useState([]);
@@ -240,6 +252,18 @@ function DMList({ activeRoom, setActiveRoom: setActiveRoomProp }) {
 
   // Only show loading if we truly have no data yet
   const isLoading = (hookLoading || dmLoading) && !conversationsFetched && conversations.length === 0;
+
+
+
+  const handleAddFriend = (user) => {
+    setSentRequests([...sentRequests, user.id]);
+    // Sent friend request
+  };
+
+  const handleFocusSearch = () => {
+    const input = document.querySelector("[data-dm-search]");
+    if (input) input.focus();
+  };
 
   const handleNavigateToChat = async (user) => {
     dispatch(setSelectedDMUser(user));
@@ -267,22 +291,14 @@ function DMList({ activeRoom, setActiveRoom: setActiveRoomProp }) {
 
     // Lazy create: clear previous conversation and set the user as active
     // Conversation will be created when first message is sent
+    // Use a temp-conv ID so ChatArea recognizes this as a DM
+    const tempConvId = `temp-conv-${user.id}`;
     dispatch(clearActiveConversation());
     if (setActiveRoomProp) {
-      setActiveRoomProp(user.id);
+      setActiveRoomProp(tempConvId);
     } else {
-      dispatch(setActiveRoom(user.id));
+      dispatch(setActiveRoom(tempConvId));
     }
-  };
-
-  const handleAddFriend = (user) => {
-    setSentRequests([...sentRequests, user.id]);
-    // Sent friend request
-  };
-
-  const handleFocusSearch = () => {
-    const input = document.querySelector("[data-dm-search]");
-    if (input) input.focus();
   };
 
   const showEmpty =

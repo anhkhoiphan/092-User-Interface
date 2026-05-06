@@ -3,6 +3,7 @@ import axios from "axios";
 import { authService } from "../../services/auth.service";
 import { setAccessToken, clearAccessToken } from "../../services/api";
 import socketService from "../../services/socket.service";
+import { clearAllMessageCaches } from "../messageCache";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:3000/api";
@@ -118,6 +119,9 @@ export const logout = createAsyncThunk("auth/logout", async () => {
 
   // Disconnect socket
   socketService.disconnect();
+
+  // Clear all message caches on logout
+  clearAllMessageCaches();
 
   clearAccessToken();
   localStorage.removeItem("refreshToken");

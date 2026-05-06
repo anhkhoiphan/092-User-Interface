@@ -1,34 +1,15 @@
-import { FiMessageSquare, FiPlus, FiSettings } from "react-icons/fi";
-import {
-  PiGraduationCap,
-  PiRobot,
-  PiFolder,
-  PiPencil,
-  PiComputerTower,
-  PiBooks,
-  PiStudent,
-  PiFlask,
-  PiFunction,
-  PiChartBar,
-} from "react-icons/pi";
+import { FiPlus, FiSettings } from "react-icons/fi";
+import { getSpaceIconComponent } from "../../constants/spaceIcons";
 
-const iconMap = {
-  graduation: PiGraduationCap,
-  robot: PiRobot,
-  folder: PiFolder,
-  pencil: PiPencil,
-  computer: PiComputerTower,
-  books: PiBooks,
-  student: PiStudent,
-  flask: PiFlask,
-  function: PiFunction,
-  chart: PiChartBar,
+// Built-in system icons (not from space registry)
+const systemIcons = {
   plus: FiPlus,
   settings: FiSettings,
 };
 
-function SpaceIcon({ icon, isActive, hasNotification, onClick, title }) {
-  const IconComponent = iconMap[icon] || FiPlus;
+function SpaceIcon({ icon, name, isActive, hasNotification, onClick, title }) {
+  // Try space registry first, then system icons
+  const IconComponent = getSpaceIconComponent(icon) || systemIcons[icon] || FiPlus;
 
   return (
     <div

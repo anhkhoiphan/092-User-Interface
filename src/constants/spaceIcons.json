@@ -1,0 +1,92 @@
+{
+  "version": "1.0",
+  "description": "Danh sách icon dùng cho Space. Frontend map iconId -> React component. Server chỉ cần lưu iconId.",
+  "categories": [
+    {
+      "id": "education",
+      "name": "Học tập",
+      "icons": [
+        { "id": "graduation", "label": "Tốt nghiệp", "keywords": ["học", "tốt nghiệp", "mũ", "cap"] },
+        { "id": "books", "label": "Sách", "keywords": ["sách", "đọc", "học"] },
+        { "id": "student", "label": "Học sinh", "keywords": ["học sinh", "sinh viên"] },
+        { "id": "flask", "label": "Thí nghiệm", "keywords": ["khoa học", "lab", "hóa học"] },
+        { "id": "function", "label": "Hàm số", "keywords": ["toán", "hàm số", "công thức"] },
+        { "id": "calculator", "label": "Máy tính", "keywords": ["tính toán", "toán học"] },
+        { "id": "brain", "label": "Trí tuệ", "keywords": ["AI", "trí tuệ", "machine learning"] },
+        { "id": "computer", "label": "Máy tính", "keywords": ["IT", "máy tính", "công nghệ"] }
+      ]
+    },
+    {
+      "id": "tech",
+      "name": "Công nghệ",
+      "icons": [
+        { "id": "robot", "label": "Robot", "keywords": ["AI", "robot", "tự động"] },
+        { "id": "code", "label": "Lập trình", "keywords": ["code", "dev", "lập trình"] },
+        { "id": "laptop", "label": "Laptop", "keywords": ["máy tính", "laptop", "work"] },
+        { "id": "phone", "label": "Điện thoại", "keywords": ["mobile", "điện thoại"] },
+        { "id": "game", "label": "Game", "keywords": ["game", "chơi", "esport"] },
+        { "id": "camera", "label": "Nhiếp ảnh", "keywords": ["ảnh", "camera", "media"] }
+      ]
+    },
+    {
+      "id": "arts",
+      "name": "Nghệ thuật",
+      "icons": [
+        { "id": "palette", "label": "Mỹ thuật", "keywords": ["vẽ", "màu sắc", "art"] },
+        { "id": "music", "label": "Âm nhạc", "keywords": ["nhạc", "hát", "audio"] },
+        { "id": "guitar", "label": "Guitar", "keywords": ["nhạc cụ", "guitar"] },
+        { "id": "pencil", "label": "Bút chì", "keywords": ["viết", "vẽ", "design"] }
+      ]
+    },
+    {
+      "id": "life",
+      "name": "Cuộc sống",
+      "icons": [
+        { "id": "heart", "label": "Yêu thích", "keywords": ["yêu thích", "tim", "love"] },
+        { "id": "star", "label": "Ngôi sao", "keywords": ["star", "nổi bật", "vip"] },
+        { "id": "sun", "label": "Mặt trờii", "keywords": ["nắng", "sáng", "ngày"] },
+        { "id": "moon", "label": "Mặt trăng", "keywords": ["đêm", "tối", "moon"] },
+        { "id": "cloud", "label": "Mây", "keywords": ["weather", "mây", "trờii"] },
+        { "id": "house", "label": "Nhà", "keywords": ["nhà", "home", "gia đình"] },
+        { "id": "coffee", "label": "Cà phê", "keywords": ["cafe", "nghỉ ngơi", "relax"] },
+        { "id": "pizza", "label": "Pizza", "keywords": ["ăn", "food", "đồ ăn"] },
+        { "id": "gift", "label": "Quà", "keywords": ["quà", "tặng", "event"] },
+        { "id": "fire", "label": "Lửa", "keywords": ["nóng", "trending", "hot"] },
+        { "id": "snowflake", "label": "Bông tuyết", "keywords": ["lạnh", "đông", "winter"] }
+      ]
+    },
+    {
+      "id": "activity",
+      "name": "Hoạt động",
+      "icons": [
+        { "id": "rocket", "label": "Tên lửa", "keywords": ["khởi động", "launch", "nhanh"] },
+        { "id": "trophy", "label": "Cúp", "keywords": ["thắng", "giải", "competition"] },
+        { "id": "flag", "label": "Cờ", "keywords": ["mục tiêu", "goal", "đích"] },
+        { "id": "basketball", "label": "Bóng rổ", "keywords": ["thể thao", "sport", "bóng"] },
+        { "id": "car", "label": "Xe hơi", "keywords": ["xe", "di chuyển", "travel"] },
+        { "id": "airplane", "label": "Máy bay", "keywords": ["bay", "du lịch", "travel"] }
+      ]
+    },
+    {
+      "id": "work",
+      "name": "Công việc",
+      "icons": [
+        { "id": "folder", "label": "Thư mục", "keywords": ["file", "tài liệu", "project"] },
+        { "id": "users", "label": "Nhóm", "keywords": ["team", "nhóm", "group"] },
+        { "id": "calendar", "label": "Lịch", "keywords": ["lịch", "thờ gian", "schedule"] },
+        { "id": "globe", "label": "Thế giới", "keywords": ["web", "internet", "toàn cầu"] },
+        { "id": "lock", "label": "Khóa", "keywords": ["bảo mật", "private", "riêng tư"] },
+        { "id": "money", "label": "Tiền", "keywords": ["tài chính", "kinh tế", "money"] },
+        { "id": "firstaid", "label": "Sơ cứu", "keywords": ["y tế", "sức khỏe", "health"] }
+      ]
+    }
+  ],
+  "allIconIds": [
+    "graduation", "books", "student", "flask", "function", "calculator", "brain", "computer",
+    "robot", "code", "laptop", "phone", "game", "camera",
+    "palette", "music", "guitar", "pencil",
+    "heart", "star", "sun", "moon", "cloud", "house", "coffee", "pizza", "gift", "fire", "snowflake",
+    "rocket", "trophy", "flag", "basketball", "car", "airplane",
+    "folder", "users", "calendar", "globe", "lock", "money", "firstaid"
+  ]
+}

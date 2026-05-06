@@ -8,6 +8,7 @@ function CreateRoomView({ onCancel, onCreate }) {
   const [roomTopic, setRoomTopic] = useState("");
   const [roomType, setRoomType] = useState("public");
   const [nameError, setNameError] = useState("");
+  const [apiError, setApiError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async () => {
@@ -21,18 +22,21 @@ function CreateRoomView({ onCancel, onCreate }) {
       return;
     }
     setNameError("");
+    setApiError("");
     setIsSubmitting(true);
 
-    await new Promise((resolve) => setTimeout(resolve, 600));
-
-    onCreate({
-      name: trimmedName,
-      displayName: trimmedName,
-      topic: roomTopic.trim(),
-      type: roomType,
-    });
-
-    setIsSubmitting(false);
+    try {
+      await onCreate({
+        name: trimmedName,
+        displayName: trimmedName,
+        topic: roomTopic.trim(),
+        type: roomType,
+      });
+    } catch (err) {
+      setApiError(err?.message || "Không thể tạo room. Vui lòng thử lại.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleKeyDown = (e) => {
@@ -348,6 +352,20 @@ function CreateRoomView({ onCancel, onCreate }) {
         </div>
       </div>
 
+      {/* API Error */}
+      {apiError && (
+        <div
+          className="px-6 py-3 border-t"
+          style={{
+            borderColor: "var(--danger)",
+            background: "rgba(239, 68, 68, 0.1)",
+            color: "var(--danger)",
+          }}
+        >
+          <div className="text-sm">{apiError}</div>
+        </div>
+      )}
+
       {/* Footer */}
       <div
         className="px-6 py-4 border-t flex justify-end gap-3"
@@ -358,6 +376,7 @@ function CreateRoomView({ onCancel, onCreate }) {
       >
         <button
           onClick={onCancel}
+          disabled={isSubmitting}
           className="px-4 py-2 rounded-md text-sm font-medium cursor-pointer"
           style={{
             background: "transparent",

@@ -1,10 +1,10 @@
-import { dmUsers } from "../../data/mockData.js";
 import { getUserColor } from "../../utils/userColor.js";
 
 /**
  * Render message content with @ mentions as styled tags
+ * Uses a simple color hash for unknown users instead of mock data
  */
-export function renderMessageWithMentions(content, isDark, onShowProfile) {
+export function renderMessageWithMentions(content, isDark, onShowProfile, isBot = false) {
   if (!content) return content;
 
   // Regex to match @username patterns (only letters, numbers, underscores - no spaces)
@@ -12,12 +12,6 @@ export function renderMessageWithMentions(content, isDark, onShowProfile) {
   const parts = [];
   let lastIndex = 0;
   let match;
-
-  // Create a map of user names to their data for quick lookup
-  const userMap = {};
-  dmUsers.forEach((user) => {
-    userMap[user.name.toLowerCase()] = user;
-  });
 
   while ((match = mentionRegex.exec(content)) !== null) {
     // Add text before the mention
@@ -31,10 +25,9 @@ export function renderMessageWithMentions(content, isDark, onShowProfile) {
 
     // Extract the mentioned name
     const mentionedName = match[1].trim();
-    const userData = userMap[mentionedName.toLowerCase()];
 
-    // Get color for the mentioned user
-    const mentionColor = userData ? getUserColor(userData.name) : "#74c0fc";
+    // Get color for the mentioned user using the name-based hash
+    const mentionColor = getUserColor(mentionedName);
 
     // Render the mention as colored text
     parts.push(
@@ -46,8 +39,8 @@ export function renderMessageWithMentions(content, isDark, onShowProfile) {
         }}
         onClick={(e) => {
           e.stopPropagation();
-          if (userData && onShowProfile) {
-            onShowProfile(userData.name);
+          if (onShowProfile) {
+            onShowProfile(mentionedName);
           }
         }}
       >

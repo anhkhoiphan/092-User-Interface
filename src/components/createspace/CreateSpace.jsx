@@ -44,52 +44,10 @@ import {
   PiSnowflake,
 } from "react-icons/pi";
 import { FiSearch, FiX } from "react-icons/fi";
-import { cancelCreateSpace } from "../../store/slices/appSlice";
+import { cancelCreateSpace, navigateToSpace } from "../../store/slices/appSlice";
+import { createSpace } from "../../store/slices/spaceSlice";
 import { dmService } from "../../services/dm.service";
-
-const spaceIcons = [
-  { id: "graduation", icon: PiGraduationCap, label: "Tốt nghiệp" },
-  { id: "robot", icon: PiRobot, label: "Robot" },
-  { id: "folder", icon: PiFolder, label: "Thư mục" },
-  { id: "pencil", icon: PiPencil, label: "Bút chì" },
-  { id: "computer", icon: PiComputerTower, label: "Máy tính" },
-  { id: "books", icon: PiBooks, label: "Sách" },
-  { id: "student", icon: PiStudent, label: "Học sinh" },
-  { id: "flask", icon: PiFlask, label: "Thí nghiệm" },
-  { id: "code", icon: PiCode, label: "Lập trình" },
-  { id: "globe", icon: PiGlobe, label: "Thế giới" },
-  { id: "music", icon: PiMusicNotes, label: "Âm nhạc" },
-  { id: "palette", icon: PiPalette, label: "Mỹ thuật" },
-  { id: "camera", icon: PiCamera, label: "Nhiếp ảnh" },
-  { id: "game", icon: PiGameController, label: "Game" },
-  { id: "heart", icon: PiHeart, label: "Yêu thích" },
-  { id: "star", icon: PiStar, label: "Ngôi sao" },
-  { id: "rocket", icon: PiRocket, label: "Tên lửa" },
-  { id: "brain", icon: PiBrain, label: "Trí tuệ" },
-  { id: "calculator", icon: PiCalculator, label: "Máy tính" },
-  { id: "calendar", icon: PiCalendar, label: "Lịch" },
-  { id: "users", icon: PiUsers, label: "Nhóm" },
-  { id: "trophy", icon: PiTrophy, label: "Cúp" },
-  { id: "flag", icon: PiFlag, label: "Cờ" },
-  { id: "sun", icon: PiSun, label: "Mặt trờii" },
-  { id: "moon", icon: PiMoon, label: "Mặt trăng" },
-  { id: "cloud", icon: PiCloud, label: "Mây" },
-  { id: "house", icon: PiHouse, label: "Nhà" },
-  { id: "car", icon: PiCar, label: "Xe hơi" },
-  { id: "airplane", icon: PiAirplane, label: "Máy bay" },
-  { id: "basketball", icon: PiBasketball, label: "Bóng rổ" },
-  { id: "guitar", icon: PiGuitar, label: "Guitar" },
-  { id: "phone", icon: PiPhone, label: "Điện thoại" },
-  { id: "laptop", icon: PiLaptop, label: "Laptop" },
-  { id: "coffee", icon: PiCoffee, label: "Cà phê" },
-  { id: "pizza", icon: PiPizza, label: "Pizza" },
-  { id: "firstaid", icon: PiFirstAid, label: "Sơ cứu" },
-  { id: "lock", icon: PiLockKey, label: "Khóa" },
-  { id: "money", icon: PiMoney, label: "Tiền" },
-  { id: "gift", icon: PiGift, label: "Quà" },
-  { id: "fire", icon: PiFire, label: "Lửa" },
-  { id: "snowflake", icon: PiSnowflake, label: "Bông tuyết" },
-];
+import { spaceIcons, getSpaceIconComponent } from "../../constants/spaceIcons";
 
 function CreateSpace() {
   const dispatch = useDispatch();
@@ -156,26 +114,57 @@ function CreateSpace() {
     setMembers((prev) => prev.filter((m) => m.id !== userId));
   };
 
-  const handleSubmit = () => {
-    if (spaceName.trim()) {
-      const newSpace = {
-        id: spaceName
-          .toLowerCase()
-          .replace(/\s+/g, "-")
-          .replace(/[^a-z0-9-]/g, ""),
+  const [createError, setCreateError] = useState(null);
+  const [isCreating, setIsCreating] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!spaceName.trim() || isCreating) return;
+
+    setCreateError(null);
+    setIsCreating(true);
+
+    try {
+      const payload = {
         name: spaceName.trim(),
-        icon: spaceIcon,
-        description: spaceDescription.trim(),
-        members: members.map((m) => m.id),
-        hasNotification: false,
+        isPrivate: false,
       };
-      console.log("Creating space:", newSpace);
-      dispatch(cancelCreateSpace());
+      if (spaceDescription.trim()) {
+        payload.description = spaceDescription.trim();
+      }
+      // Gửi icon nếu BE hỗ trợ (URL string theo API doc)
+      // Nếu BE chưa hỗ trợ, có thể bỏ qua hoặc comment dòng dưới
+      // payload.icon = spaceIcon;
+
+      // Gửi memberIds nếu có members được chọn
+      if (members.length > 0) {
+        payload.memberIds = members.map((m) => m.id);
+      }
+
+      const result = await dispatch(createSpace(payload)).unwrap();
+
+      // If members were selected, add them to the space
+      if (members.length > 0 && result?.id) {
+        console.log("Space created, members to add:", members);
+      }
+
+      // Navigate to the newly created space
+      if (result?.id) {
+        dispatch(navigateToSpace(result.id));
+      }
+    } catch (err) {
+      console.error("Failed to create space:", err);
+      setCreateError(
+        typeof err === "string"
+          ? err
+          : err?.message || "Không thể tạo space. Vui lòng thử lại.",
+      );
+    } finally {
+      setIsCreating(false);
     }
   };
 
   const selectedIconData = spaceIcons.find((s) => s.id === spaceIcon);
-  const SelectedIcon = selectedIconData?.icon || PiGraduationCap;
+  const SelectedIcon = selectedIconData?.component || PiGraduationCap;
 
   return (
     <div
@@ -213,7 +202,7 @@ function CreateSpace() {
               Chọn icon
             </h3>
             <div className="flex flex-wrap gap-2">
-              {spaceIcons.map(({ id, icon: Icon }) => (
+              {spaceIcons.map(({ id, component: IconComponent }) => (
                 <button
                   key={id}
                   onClick={() => setSpaceIcon(id)}
@@ -240,7 +229,7 @@ function CreateSpace() {
                         "var(--card-bg-secondary)";
                   }}
                 >
-                  <Icon size={24} />
+                  <IconComponent size={24} />
                 </button>
               ))}
             </div>
@@ -490,6 +479,20 @@ function CreateSpace() {
           )}
         </div>
       </div>
+      {/* Error message */}
+      {createError && (
+        <div
+          className="px-6 py-3 border-t"
+          style={{
+            borderColor: "var(--border-primary)",
+            background: "rgba(239, 68, 68, 0.1)",
+          }}
+        >
+          <div className="text-sm" style={{ color: "#ef4444" }}>
+            {createError}
+          </div>
+        </div>
+      )}
       <div
         className="px-6 py-4 border-t flex justify-end gap-3"
         style={{
@@ -514,7 +517,7 @@ function CreateSpace() {
         </button>
         <button
           onClick={handleSubmit}
-          disabled={!spaceName.trim()}
+          disabled={!spaceName.trim() || isCreating}
           className="px-4 py-2 rounded-md text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           style={{
             background: "var(--primary)",
@@ -529,7 +532,7 @@ function CreateSpace() {
               e.currentTarget.style.background = "var(--primary)";
           }}
         >
-          Tạo Space
+          {isCreating ? "Đang tạo..." : "Tạo Space"}
         </button>
       </div>
     </div>

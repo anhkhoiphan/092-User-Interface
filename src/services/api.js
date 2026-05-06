@@ -98,6 +98,14 @@ async function silentRefresh() {
     if (typeof window !== "undefined") {
       localStorage.setItem("refreshToken", data.refreshToken);
     }
+
+    // Notify WebSocket to reconnect with the new token
+    import("./socket.service").then(({ default: socketService }) => {
+      if (socketService.isConnected()) {
+        console.log("[API Silent Refresh] Token refreshed, reconnecting WebSocket...");
+        socketService.reconnect();
+      }
+    });
   } catch {
     clearAuth();
   }
@@ -220,6 +228,15 @@ api.interceptors.response.use(
 
         onRefreshed(data.accessToken);
         original.headers.Authorization = `Bearer ${data.accessToken}`;
+
+        // Notify WebSocket to reconnect with the new token
+        import("./socket.service").then(({ default: socketService }) => {
+          if (socketService.isConnected()) {
+            console.log("[API] Token refreshed, reconnecting WebSocket...");
+            socketService.reconnect();
+          }
+        });
+
         return api(original);
       } catch (refreshError) {
         clearAuth();

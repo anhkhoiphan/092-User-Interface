@@ -70,6 +70,8 @@ function ChatHeader({
   isBotRoom,
   isDM,
   dmUser,
+  roomName,
+  roomDescription,
   onToggleRoomList,
   onToggleMemberList,
   roomListCollapsed,
@@ -81,20 +83,20 @@ function ChatHeader({
   const headerTitle = hasNoSelection
     ? "Tin nhắn"
     : isBotRoom
-      ? "Trợ lý AI"
-      : isDM && dmUser
-        ? dmUser.name
-        : `# ${activeRoom}`;
+        ? "Trợ lý AI"
+        : isDM && dmUser
+          ? dmUser.name
+          : roomName || `# ${activeRoom}`;
 
   const headerSubtitle = hasNoSelection
     ? "Chọn một cuộc trò chuyện để bắt đầu"
     : isBotRoom
-      ? "Hỏi đáp với trợ lý AI"
-      : isDM && dmUser
-        ? dmUser.isOnline
-          ? "Đang hoạt động"
-          : "Ngoại tuyến"
-        : "Giải tích - tuần 1";
+        ? "Hỏi đáp với trợ lý AI"
+        : isDM && dmUser
+          ? dmUser.isOnline
+            ? "Đang hoạt động"
+            : "Ngoại tuyến"
+          : roomDescription || "";
 
   return (
     <div

@@ -6,6 +6,10 @@ const initialState = {
   activeRoom: null,
   searchQuery: "",
   isSettings: false,
+  // 🆕 App-level loading state for initial data fetch on F5
+  appLoading: false,
+  appLoadingPhase: "idle", // 'idle' | 'auth' | 'conversations' | 'spaces' | 'rooms' | 'members' | 'messages' | 'complete'
+  appLoadingError: null,
 };
 
 const appSlice = createSlice({
@@ -50,6 +54,21 @@ const appSlice = createSlice({
     cancelCreateSpace: (state) => {
       state.activeView = "space";
     },
+    // 🆕 App loading state reducers
+    setAppLoading: (state, action) => {
+      state.appLoading = action.payload;
+    },
+    setAppLoadingPhase: (state, action) => {
+      state.appLoadingPhase = action.payload;
+    },
+    setAppLoadingError: (state, action) => {
+      state.appLoadingError = action.payload;
+    },
+    resetAppLoading: (state) => {
+      state.appLoading = false;
+      state.appLoadingPhase = "idle";
+      state.appLoadingError = null;
+    },
   },
 });
 
@@ -65,6 +84,11 @@ export const {
   navigateToMessages,
   openCreateSpace,
   cancelCreateSpace,
+  // 🆕 App loading exports
+  setAppLoading,
+  setAppLoadingPhase,
+  setAppLoadingError,
+  resetAppLoading,
 } = appSlice.actions;
 
 export default appSlice.reducer;

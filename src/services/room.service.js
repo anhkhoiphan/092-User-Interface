@@ -2,7 +2,10 @@ import api from "./api";
 
 export const roomService = {
   // Create room in a space
-  create: (spaceId, data) => api.post(`/spaces/${spaceId}/rooms`, data),
+  create: (spaceId, data) => {
+    console.log("[roomService.create] POST /spaces/" + spaceId + "/rooms", "payload:", JSON.stringify(data, null, 2));
+    return api.post(`/spaces/${spaceId}/rooms`, data);
+  },
 
   // Get room details
   getById: (roomId) => api.get(`/rooms/${roomId}`),

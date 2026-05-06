@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import { members, dmUsers, rooms } from "../data/mockData";
 import {
   DMProfile,
   MemberSection,
@@ -15,6 +14,8 @@ import {
   setSelectedMember,
   clearSelectedMember,
 } from "../store/slices/memberSlice";
+import { fetchSpaceMembers } from "../store/slices/spaceSlice";
+
 
 function MemberList({ activeView, activeRoom, createTab }) {
   const dispatch = useDispatch();
@@ -23,30 +24,50 @@ function MemberList({ activeView, activeRoom, createTab }) {
     (state) => state.member,
   );
   const { selectedDMUser } = useSelector((state) => state.chat);
+  const { activeConversation } = useSelector((state) => state.dm);
+  const { spaces, membersMap, membersLoading, fetchedMembers } = useSelector(
+    (state) => state.space,
+  );
   const appState = useSelector((state) => state.app);
 
   const view = activeView || appState.activeView;
   const room = activeRoom || appState.activeRoom;
+  const activeSpace = appState.activeSpace;
 
   const [dmUser, setDmUser] = useState(null);
 
-  const allRoomIds = Object.values(rooms).flat().map((r) => r.id);
+  // Detect if current room is a space room
+  const { roomsMap } = useSelector((state) => state.space);
+  const isSpaceRoom = room && Object.values(roomsMap).some(
+    (rooms) => rooms.some((r) => r.id === room)
+  );
   const isBotRoom = room === "tro-ly-ai";
-  const isDM = (view === "messages") || (room && !allRoomIds.includes(room) && !isBotRoom);
+  const isDM = view === "messages" || (room && !isSpaceRoom && !isBotRoom && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(room));
 
-  // Build dmUser from selectedDMUser or fallback
+  // Build dmUser from activeConversation
   useEffect(() => {
     if (!isDM) {
       setDmUser(null);
       return;
     }
-
     if (!room) {
       setDmUser(null);
       return;
     }
-
-    if (selectedDMUser && (selectedDMUser.id === room || selectedDMUser.userId === room)) {
+    if (activeConversation?.other_user) {
+      const ou = activeConversation.other_user;
+      setDmUser({
+        id: ou.id,
+        name: ou.display_name || "Unknown",
+        avatar: ou.avatar_url || null,
+        color: ou.color || null,
+        isOnline: ou.status === "online",
+        isFriend: true,
+        email: ou.email || "",
+        bio: ou.bio || "",
+        isBot: false,
+      });
+    } else if (selectedDMUser) {
       setDmUser({
         id: selectedDMUser.id || selectedDMUser.userId,
         name: selectedDMUser.name || "Unknown",
@@ -58,26 +79,18 @@ function MemberList({ activeView, activeRoom, createTab }) {
         bio: selectedDMUser.bio || "",
         isBot: selectedDMUser.isBot || false,
       });
-    } else {
-      // Fallback to mock data or basic user
-      const mockUser = dmUsers.find((dm) => dm.id === room);
-      if (mockUser) {
-        setDmUser(mockUser);
-      } else {
-        setDmUser({
-          id: room,
-          name: room,
-          avatar: null,
-          color: null,
-          isOnline: false,
-          isFriend: false,
-          email: "",
-          bio: "",
-          isBot: false,
-        });
-      }
     }
-  }, [room, isDM, selectedDMUser]);
+  }, [room, isDM, selectedDMUser, activeConversation]);
+
+  // 🆕 Lazy load space members when entering a space room
+  useEffect(() => {
+    if (!activeSpace || isDM) return;
+    const hasMembers = membersMap[activeSpace] && membersMap[activeSpace].length > 0;
+    const isFetched = fetchedMembers[activeSpace];
+    if (!hasMembers && !isFetched) {
+      dispatch(fetchSpaceMembers(activeSpace));
+    }
+  }, [activeSpace, isDM, dispatch, membersMap, fetchedMembers]);
 
   // CreateSpace view
   if (view === "createSpace") {
@@ -94,12 +107,43 @@ function MemberList({ activeView, activeRoom, createTab }) {
     return <DMProfile isDark={isDark} dmUser={dmUser} />;
   }
 
-  // Normal member list view
-  const filteredMembers = members.filter((m) =>
+  // Space member list view — use real API data
+  const spaceMembers = membersMap[activeSpace] || [];
+
+  // Normalize API members to format MemberItem expects
+  console.log("[MemberList] Raw spaceMembers:", spaceMembers);
+  const normalizedMembers = spaceMembers.map((m) => {
+    const displayName = m.displayName || m.display_name || m.username || m.email || "Unknown";
+    const isOnline = m.status === "online";
+    const avatarUrl = m.avatar || m.avatar_url;
+    const normalized = {
+      id: m.id || m.user_id,
+      name: displayName,
+      avatar: avatarUrl
+        ? (avatarUrl.length <= 2 ? avatarUrl : displayName.charAt(0).toUpperCase())
+        : displayName.charAt(0).toUpperCase(),
+      color: m.color || null,
+      isOnline,
+      isFriend: true,
+      isBot: false,
+      email: m.email || "",
+      role: m.role || "member",
+    };
+    console.log("[MemberList] Normalized member:", { original: m, normalized });
+    return normalized;
+  });
+  console.log("[MemberList] Online:", normalizedMembers.filter((m) => m.isOnline).length, "Offline:", normalizedMembers.filter((m) => !m.isOnline).length);
+
+  // Filter by search
+  const filteredMembers = normalizedMembers.filter((m) =>
     m.name.toLowerCase().includes(memberSearchQuery.toLowerCase()),
   );
+
   const onlineMembers = filteredMembers.filter((m) => m.isOnline);
   const offlineMembers = filteredMembers.filter((m) => !m.isOnline);
+
+  // Get current space name
+  const currentSpace = spaces.find((s) => s.id === activeSpace);
 
   return (
     <div
@@ -115,7 +159,7 @@ function MemberList({ activeView, activeRoom, createTab }) {
       >
         <div className="flex items-center justify-between mb-3">
           <div
-            className="text-sm font-semibold uppercase tracking-wider"
+            className="text-sm font-semibold uppercase tracking-wider truncate"
             style={{ color: "var(--text-primary)" }}
           >
             Thành viên
@@ -155,18 +199,51 @@ function MemberList({ activeView, activeRoom, createTab }) {
           />
         )}
 
-        <MemberSection
-          isDark={isDark}
-          title="Online"
-          members={onlineMembers}
-          onMemberClick={(member) => dispatch(setSelectedMember(member))}
-        />
-        <MemberSection
-          isDark={isDark}
-          title="Offline"
-          members={offlineMembers}
-          onMemberClick={(member) => dispatch(setSelectedMember(member))}
-        />
+        {membersLoading && (
+          <div className="flex flex-col gap-3 px-3 py-3">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="flex items-center gap-3 animate-pulse">
+                <div
+                  className="w-9 h-9 rounded-lg flex-shrink-0"
+                  style={{ background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)" }}
+                />
+                <div className="flex-1 min-w-0 space-y-2">
+                  <div
+                    className="h-3.5 w-24 rounded"
+                    style={{ background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)" }}
+                  />
+                  <div
+                    className="h-2.5 w-16 rounded"
+                    style={{ background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)" }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!membersLoading && normalizedMembers.length === 0 && (
+          <div className="text-center py-6 text-xs" style={{ color: "var(--text-muted)" }}>
+            Chưa có thành viên nào
+          </div>
+        )}
+
+        {!membersLoading && (
+          <>
+            <MemberSection
+              isDark={isDark}
+              title="Online"
+              members={onlineMembers}
+              onMemberClick={(member) => dispatch(setSelectedMember(member))}
+            />
+            <MemberSection
+              isDark={isDark}
+              title="Offline"
+              members={offlineMembers}
+              onMemberClick={(member) => dispatch(setSelectedMember(member))}
+            />
+          </>
+        )}
       </div>
       <RecentFiles isDark={isDark} />
     </div>

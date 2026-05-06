@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { FiPaperclip } from "react-icons/fi";
+import { FiPaperclip, FiRefreshCw } from "react-icons/fi";
 import { useDispatch } from "react-redux";
 import { ReplyPreview } from "./MessageActions";
 import { renderMessageWithMentions } from "./MessageContent";
 import FileAttachment from "./FileAttachment";
 import { getUserColor } from "../../utils/userColor";
 import { fetchMessages } from "../../store/slices/dmSlice";
+import { fetchRoomMessages } from "../../store/slices/messageSlice";
 
 function ChatMessage({
   msg,
@@ -14,10 +15,12 @@ function ChatMessage({
   onEdit,
   onShowProfile,
   isSending,
+  onRetry,
 }) {
   const senderColor = getUserColor(msg.sender, msg.color);
   const isOwnMessage = msg.isOwn;
   const [isHovered, setIsHovered] = useState(false);
+  const isFailed = msg.failed || isSending?.failed;
 
   return (
     <div
@@ -70,7 +73,7 @@ function ChatMessage({
           <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
             {msg.timestamp}
           </span>
-          {(msg.pending || isSending) && (
+          {msg.pending && !isFailed && (
             <span
               className="text-[10px] italic ml-1"
               style={{
@@ -81,6 +84,17 @@ function ChatMessage({
               · Đang gửi...
             </span>
           )}
+          {isFailed && (
+            <span
+              className="text-[10px] italic ml-1"
+              style={{
+                color: "#ef4444",
+                fontWeight: 500,
+              }}
+            >
+              · Gửi thất bại
+            </span>
+          )}
         </div>
 
         {/* Message content */}
@@ -88,7 +102,7 @@ function ChatMessage({
           className="text-sm leading-relaxed"
           style={{ color: "var(--text-primary)" }}
         >
-          {renderMessageWithMentions(msg.content, isDark, onShowProfile)}
+          {renderMessageWithMentions(msg.content, isDark, onShowProfile, msg.isBot)}
           {msg.isEdited && (
             <span
               className="ml-1 text-[10px] italic"
@@ -120,6 +134,20 @@ function ChatMessage({
             <FiPaperclip size={14} /> {msg.attachmentName}
           </div>
         ) : null}
+
+        {/* Retry button for failed messages */}
+        {isFailed && onRetry && (
+          <button
+            onClick={() => onRetry(msg)}
+            className="mt-1.5 flex items-center gap-1 text-xs font-medium cursor-pointer transition-colors"
+            style={{ color: "#ef4444" }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "#dc2626")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "#ef4444")}
+          >
+            <FiRefreshCw size={12} />
+            Thử lại
+          </button>
+        )}
       </div>
     </div>
   );
@@ -268,6 +296,8 @@ function ChatMessages({
   sendingMessages,
   isLoading,
   conversationId,
+  roomId,
+  onRetry,
 }) {
   const dispatch = useDispatch();
   const messagesContainerRef = useRef(null);
@@ -278,11 +308,14 @@ function ChatMessages({
   const prevConversationIdRef = useRef(conversationId);
   const hasMoreMessagesRef = useRef(true);
 
-  // Reset pagination state when conversation changes
+  // Track if we have cached messages displayed while background loading
+  const hasCachedMessages = chatMessages.length > 0 && isLoading;
+
+  // Reset pagination state when conversation or room changes
   useEffect(() => {
     setCurrentPage(1);
     hasMoreMessagesRef.current = true;
-  }, [conversationId]);
+  }, [conversationId, roomId]);
 
   // Auto scroll to bottom when loading finishes, new messages arrive, or conversation changes
   useEffect(() => {
@@ -317,38 +350,65 @@ function ChatMessages({
       if (
         container.scrollTop < 10 &&
         !isLoadingMore &&
-        hasMoreMessagesRef.current &&
-        conversationId &&
-        !conversationId.toString().startsWith("temp-conv-")
+        hasMoreMessagesRef.current
       ) {
-        setIsLoadingMore(true);
-        const nextPage = currentPage + 1;
-
-        dispatch(
-          fetchMessages({
-            conversationId,
-            page: nextPage,
-            limit: 50,
-          }),
-        )
-          .unwrap()
-          .then((result) => {
-            const fetched = result.messages || [];
-            if (fetched.length === 0) {
-              hasMoreMessagesRef.current = false;
-            } else {
-              setCurrentPage(nextPage);
-            }
-          })
-          .catch((err) => {
-            console.error("[ChatMessages] Failed to load more:", err);
-          })
-          .finally(() => {
-            setIsLoadingMore(false);
-          });
+        // DM pagination
+        if (conversationId && !conversationId.toString().startsWith("temp-conv-")) {
+          setIsLoadingMore(true);
+          const nextPage = currentPage + 1;
+          dispatch(
+            fetchMessages({
+              conversationId,
+              page: nextPage,
+              limit: 50,
+            }),
+          )
+            .unwrap()
+            .then((result) => {
+              const fetched = result.messages || [];
+              if (fetched.length === 0) {
+                hasMoreMessagesRef.current = false;
+              } else {
+                setCurrentPage(nextPage);
+              }
+            })
+            .catch((err) => {
+              console.error("[ChatMessages] Failed to load more DM:", err);
+            })
+            .finally(() => {
+              setIsLoadingMore(false);
+            });
+        }
+        // Room pagination
+        else if (roomId) {
+          setIsLoadingMore(true);
+          const nextPage = currentPage + 1;
+          dispatch(
+            fetchRoomMessages({
+              roomId,
+              page: nextPage,
+              limit: 50,
+            }),
+          )
+            .unwrap()
+            .then((result) => {
+              const fetched = result.messages || [];
+              if (fetched.length === 0) {
+                hasMoreMessagesRef.current = false;
+              } else {
+                setCurrentPage(nextPage);
+              }
+            })
+            .catch((err) => {
+              console.error("[ChatMessages] Failed to load more room:", err);
+            })
+            .finally(() => {
+              setIsLoadingMore(false);
+            });
+        }
       }
     },
-    [isLoadingMore, currentPage, conversationId, dispatch],
+    [isLoadingMore, currentPage, conversationId, roomId, dispatch],
   );
 
   const hasMessages = chatMessages.length > 0;
@@ -381,6 +441,29 @@ function ChatMessages({
         />
       ) : (
         <div className="flex flex-col min-h-full justify-end gap-1 w-full">
+          {/* Background loading indicator (when showing cached messages while fetching) */}
+          {hasCachedMessages && (
+            <div className="flex items-center justify-center gap-2 py-1">
+              <div className="flex items-center gap-1">
+                <div
+                  className="w-1.5 h-1.5 rounded-full animate-pulse"
+                  style={{ background: "var(--primary)", animationDelay: "0ms" }}
+                />
+                <div
+                  className="w-1.5 h-1.5 rounded-full animate-pulse"
+                  style={{ background: "var(--primary)", animationDelay: "150ms" }}
+                />
+                <div
+                  className="w-1.5 h-1.5 rounded-full animate-pulse"
+                  style={{ background: "var(--primary)", animationDelay: "300ms" }}
+                />
+              </div>
+              <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                Đang cập nhật...
+              </span>
+            </div>
+          )}
+
           {/* Loading indicator at top when fetching older messages */}
           {isLoadingMore && (
             <div className="flex items-center justify-center gap-2 py-3">
@@ -415,10 +498,11 @@ function ChatMessages({
               key={msg.id}
               msg={msg}
               isDark={isDark}
-              isSending={!!sendingMessages?.[msg.id]}
+              isSending={sendingMessages?.[msg.id]}
               onReply={onReply}
               onEdit={onEdit}
               onShowProfile={onShowProfile}
+              onRetry={onRetry}
             />
           ))}
           {/* Typing indicator removed — now shown in ChatInput instead */}

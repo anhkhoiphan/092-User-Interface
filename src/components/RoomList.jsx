@@ -37,7 +37,6 @@ function RoomList({ activeView, activeSpace, activeRoom, searchQuery, createTab,
         setActiveRoom={handleSetActiveRoom}
         searchQuery={query}
         setSearchQuery={handleSetSearchQuery}
-        
       />
     );
   }

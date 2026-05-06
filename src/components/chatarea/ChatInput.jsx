@@ -3,8 +3,8 @@ import { FiX, FiPaperclip } from "react-icons/fi";
 import { IoSend } from "react-icons/io5";
 import MentionSuggestions from "./MentionSuggestions";
 import FileAttachmentPreview from "./FileAttachmentPreview";
-import { dmUsers } from "../../data/mockData";
 import { getUserColor } from "../../utils/userColor";
+import { useSelector } from "react-redux";
 
 // Allowed file types
 const ALLOWED_FILE_TYPES = [
@@ -39,6 +39,38 @@ function ChatInput({
   const editorRef = useRef(null);
   const containerRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  // Get real users from Redux for mentions
+  const { conversations } = useSelector((state) => state.dm);
+  const { membersMap } = useSelector((state) => state.space);
+
+  const allUsers = (() => {
+    const users = [];
+    const seenIds = new Set();
+
+    conversations.forEach((conv) => {
+      const ou = conv.other_user;
+      if (ou && !seenIds.has(ou.id)) {
+        seenIds.add(ou.id);
+        users.push({
+          id: ou.id,
+          name: ou.display_name || ou.name || "Unknown",
+        });
+      }
+    });
+
+    Object.values(membersMap).flat().forEach((member) => {
+      if (member && !seenIds.has(member.id)) {
+        seenIds.add(member.id);
+        users.push({
+          id: member.id,
+          name: member.display_name || member.name || member.email || "Unknown",
+        });
+      }
+    });
+
+    return users;
+  })();
 
   const placeholderText = placeholder;
 
@@ -97,6 +129,7 @@ function ChatInput({
   };
 
   const handleMentionSelect = (user) => {
+    console.log("[ChatInput] Mention selected:", user);
     if (user === null) {
       setShowMentions(false);
       return;
@@ -135,7 +168,6 @@ function ChatInput({
     editorRef.current.appendChild(mentionSpan);
 
     // Add a zero-width space followed by regular space after the mention
-    // This ensures the cursor can be placed after the mention
     const spaceNode = document.createTextNode("\u200B ");
     editorRef.current.appendChild(spaceNode);
 
@@ -152,6 +184,11 @@ function ChatInput({
     selection.collapse(spaceNode, 2);
 
     setShowMentions(false);
+
+    // Log final content
+    setTimeout(() => {
+      console.log("[ChatInput] After mention, plainText:", getPlainText());
+    }, 0);
   };
 
   const handleSend = () => {
@@ -174,7 +211,8 @@ function ChatInput({
   // Handle file selection
   const handleFileSelect = (e) => {
     const files = Array.from(e.target.files);
-    const validFiles = [];
+    const imageFiles = [];
+    const nonImageFiles = [];
 
     files.forEach((file) => {
       // Check file type
@@ -191,31 +229,48 @@ function ChatInput({
         return;
       }
 
-      // Create preview for images
+      // Separate images (async) from non-images (sync)
       if (file.type.startsWith("image/")) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          validFiles.push({
-            file,
-            name: file.name,
-            type: file.type,
-            size: file.size,
-            preview: e.target.result,
-          });
-          setSelectedFiles((prev) => [...prev, validFiles.pop()]);
-        };
-        reader.readAsDataURL(file);
+        imageFiles.push(file);
       } else {
-        validFiles.push({
+        nonImageFiles.push({
           file,
           name: file.name,
           type: file.type,
           size: file.size,
           preview: null,
         });
-        setSelectedFiles((prev) => [...prev, validFiles.pop()]);
       }
     });
+
+    // Add non-image files immediately
+    if (nonImageFiles.length > 0) {
+      setSelectedFiles((prev) => [...prev, ...nonImageFiles]);
+    }
+
+    // Process images asynchronously with Promise.all
+    if (imageFiles.length > 0) {
+      Promise.all(
+        imageFiles.map(
+          (file) =>
+            new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onload = (e) => {
+                resolve({
+                  file,
+                  name: file.name,
+                  type: file.type,
+                  size: file.size,
+                  preview: e.target.result,
+                });
+              };
+              reader.readAsDataURL(file);
+            }),
+        ),
+      ).then((imageResults) => {
+        setSelectedFiles((prev) => [...prev, ...imageResults]);
+      });
+    }
 
     // Reset file input
     if (fileInputRef.current) {
@@ -237,7 +292,7 @@ function ChatInput({
 
   const handleKeyDown = (e) => {
     if (showMentions) {
-      const filteredUsers = dmUsers.filter((user) =>
+      const filteredUsers = allUsers.filter((user) =>
         user.name.toLowerCase().includes(mentionFilter.toLowerCase()),
       );
 
@@ -311,7 +366,7 @@ function ChatInput({
           const lastAtPos = textBeforeSpace.lastIndexOf("@");
           if (lastAtPos >= 0) {
             const potentialMention = textBeforeSpace.substring(lastAtPos);
-            const mentionedUser = dmUsers.find(
+            const mentionedUser = allUsers.find(
               (u) =>
                 `@${u.name} ` === potentialMention ||
                 `@${u.name}` === potentialMention,

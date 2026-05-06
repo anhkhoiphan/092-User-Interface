@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import SharedFile from "./SharedFile";
 import { getUserColor } from "../../utils/userColor";
 import { dmService } from "../../services/dm.service";
@@ -66,7 +66,12 @@ function UserAvatar({ name, avatarUrl, isOnline, isDark, isBot, color }) {
 
 function DMProfile({ isDark, dmUser }) {
   const dispatch = useDispatch();
+  const onlineUsers = useSelector((state) => state.dm.onlineUsers);
   const [profileColor, setProfileColor] = useState(null);
+
+  const isOnlineRealtime = dmUser?.id && onlineUsers.includes(String(dmUser.id));
+  console.log("[DMProfile] dmUser.id:", dmUser?.id, "onlineUsers:", onlineUsers, "isOnlineRealtime:", isOnlineRealtime, "dmUser.isOnline:", dmUser?.isOnline);
+  const dmUserOnline = isOnlineRealtime || dmUser?.isOnline || false;
 
   useEffect(() => {
     if (!dmUser) {
@@ -283,7 +288,7 @@ function DMProfile({ isDark, dmUser }) {
             name={dmUser.name}
             avatarUrl={dmUser.avatar}
             color={effectiveColor}
-            isOnline={dmUser.isOnline}
+            isOnline={dmUserOnline}
             isDark={isDark}
             isBot={dmUser.isBot}
           />
@@ -298,7 +303,7 @@ function DMProfile({ isDark, dmUser }) {
           className="text-xs mt-1"
           style={{ color: "var(--text-secondary)" }}
         >
-          {dmUser.isOnline ? "Đang hoạt động" : "Ngoại tuyến"}
+          {dmUserOnline ? "Đang hoạt động" : "Ngoại tuyến"}
         </div>
       </div>
       {/* Info */}
