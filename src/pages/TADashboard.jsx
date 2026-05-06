@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux';
 import { 
   FiAlertCircle, FiCheckCircle, FiMessageSquare, FiRefreshCw, 
   FiTrash2, FiEdit, FiClock, FiUsers, FiFileText, FiCalendar, 
-  FiSettings, FiShare2, FiMoreVertical, FiTrendingUp, FiActivity, FiCpu, FiInfo, FiUploadCloud, FiSend, FiChevronRight 
+  FiSettings, FiShare2, FiMoreVertical, FiTrendingUp, FiActivity, FiCpu, FiInfo, FiUploadCloud, FiSend, FiChevronRight, FiSlash, FiHelpCircle, FiBarChart 
 } from 'react-icons/fi';
 import taService from '../services/ta.service';
 import './TADashboard.css';
@@ -122,6 +122,15 @@ const TADashboard = () => {
   const criticalCount = atRiskList.filter(s => s.level === 'critical').length;
   const warningCount = atRiskList.filter(s => s.level === 'warning').length;
 
+  const atRiskLogs = actionLogs.filter(log => log.action_type === 'dismissed_alert');
+  const summaryLogs = actionLogs.filter(log => ['upload_document', 'approved_summary'].includes(log.action_type));
+
+  const getRiskColor = (score) => {
+    if (score >= 5) return 'var(--ta-red)';
+    if (score >= 3) return 'var(--ta-amber)';
+    return 'var(--ta-blue)';
+  };
+
   return (
     <div className="ta-dashboard-container">
       {/* Internal Sidebar */}
@@ -138,7 +147,7 @@ const TADashboard = () => {
         </div>
         <div className={`sb-item ${activeTab === 'summary' ? 'active' : ''}`} onClick={() => setActiveTab('summary')}>
           <div className="sb-icon" style={{background: 'var(--ta-accent-bg)', color: 'var(--ta-accent)'}}><FiFileText /></div>
-          <span>AI Summary Queue</span>
+          <span>Tóm tắt bài giảng bằng AI</span>
           {summaryQueue.length > 0 && <span className="ta-badge badge-amber" style={{marginLeft: 'auto'}}>{summaryQueue.length}</span>}
         </div>
         <div className={`sb-item ${activeTab === 'logs' ? 'active' : ''}`} onClick={() => setActiveTab('logs')}>
@@ -157,10 +166,10 @@ const TADashboard = () => {
         <header className="ta-topbar">
           <div>
             <div className="tb-title">
-              {activeTab === 'at-risk' ? 'Học viên cần quan tâm' : activeTab === 'summary' ? 'Quy trình Tóm tắt buổi học' : 'Nhật ký hoạt động TA'}
+              {activeTab === 'at-risk' ? 'Phân tích Rủi ro học viên' : activeTab === 'summary' ? 'Tóm tắt bài giảng bằng AI' : 'Nhật ký hoạt động TA'}
             </div>
             <div className="tb-sub">
-              {activeTab === 'at-risk' ? `${atRiskList.length} học viên cần hành động` : activeTab === 'summary' ? 'Tạo bản tóm tắt thông minh dựa trên tài liệu' : 'Lịch sử thao tác gần nhất'}
+              {activeTab === 'at-risk' ? `${atRiskList.length} trường hợp cần hỗ trợ theo công thức Scoring` : activeTab === 'summary' ? 'Tạo bản tóm tắt thông minh dựa trên tài liệu' : 'Lịch sử thao tác quản lý'}
             </div>
           </div>
           <div className="dashboard-actions" style={{display: 'flex', gap: '8px'}}>
@@ -169,7 +178,7 @@ const TADashboard = () => {
             </button>
             {activeTab === 'at-risk' && (
               <button className="vibrant-btn" style={{height: '38px', padding: '0 20px', fontSize: '13px'}} onClick={handleScanAtRisk} disabled={loading}>
-                <FiTrendingUp /> Quét học viên
+                <FiTrendingUp /> Chạy thuật toán quét
               </button>
             )}
           </div>
@@ -179,24 +188,24 @@ const TADashboard = () => {
           {activeTab === 'at-risk' && (
             <div className="metrics-grid animate-fade">
               <div className="metric-card">
-                <div className="mc-label">Nguy cấp</div>
+                <div className="mc-label">Nguy cấp (Score ≥ 5)</div>
                 <div className="mc-val" style={{color: 'var(--ta-red)'}}>{criticalCount}</div>
-                <div className="mc-sub mc-dn">Cần xử lý ngay</div>
+                <div className="mc-sub mc-dn">Cần hành động ngay</div>
               </div>
               <div className="metric-card">
-                <div className="mc-label">Cảnh báo</div>
+                <div className="mc-label">Cảnh báo (Score 2-4)</div>
                 <div className="mc-val" style={{color: 'var(--ta-amber)'}}>{warningCount}</div>
-                <div className="mc-sub">Đang theo dõi</div>
+                <div className="mc-sub">Đang theo dõi thêm</div>
               </div>
               <div className="metric-card">
-                <div className="mc-label">Tỷ lệ xử lý</div>
-                <div className="mc-val">92%</div>
-                <div className="mc-sub mc-up">↑ 4% tuần này</div>
+                <div className="mc-label">Hiệu quả AI</div>
+                <div className="mc-val">94%</div>
+                <div className="mc-sub mc-up">↑ 2% chính xác</div>
               </div>
               <div className="metric-card">
-                <div className="mc-label">Avg Respond</div>
-                <div className="mc-val">15p</div>
-                <div className="mc-sub mc-up">Tốt hơn 20%</div>
+                <div className="mc-label">Average Score</div>
+                <div className="mc-val">3.2</div>
+                <div className="mc-sub">Mức độ rủi ro lớp</div>
               </div>
             </div>
           )}
@@ -205,47 +214,65 @@ const TADashboard = () => {
             <div className="animate-fade">
               <div className="ta-card">
                 <div className="card-head">
-                  <span style={{fontWeight: 600}}>🔴 Học viên có dấu hiệu rủi ro</span>
+                  <span style={{fontWeight: 600}}>🎯 Danh sách ưu tiên hỗ trợ</span>
                   <span className="ta-badge badge-red">{atRiskList.length}</span>
                 </div>
                 {atRiskList.length === 0 ? (
                   <div className="empty-state">
                     <FiCheckCircle className="empty-icon" style={{color: 'var(--ta-accent)'}} />
-                    <p>Lớp học hiện tại rất ổn định.</p>
+                    <p>Hệ thống không phát hiện rủi ro nào.</p>
                   </div>
                 ) : (
-                  atRiskList.map(student => (
-                    <div key={student.id} style={{borderBottom: '1px solid var(--ta-border)'}}>
-                      <div className="ta-row">
-                        <img src={student.profiles?.avatar_url || 'https://ui-avatars.com/api/?name=' + (student.profiles?.display_name || 'Student')} className="student-av" alt={student.profiles?.display_name} />
-                        <div className="cell-info">
-                          <div className="cell-name">{student.profiles?.display_name || 'Học viên ẩn danh'}</div>
-                          <div className="cell-sub">{student.reason} · {new Date(student.created_at).toLocaleTimeString('vi-VN')}</div>
-                        </div>
-                        <div className={`ta-badge ${student.level === 'critical' ? 'badge-red' : 'badge-amber'}`}>
-                          {student.level === 'critical' ? 'Critical' : 'Warning'}
-                        </div>
-                        <button className="ta-btn" style={{borderColor: 'var(--ta-accent)', color: 'var(--ta-accent)'}} onClick={() => handleGetAiContext(student.id)}>
-                          <FiMessageSquare /> Nhắn tin
-                        </button>
-                        <button className="ta-btn" onClick={() => handleResolveAlert(student.id)}>
-                          <FiCheckCircle /> Đã xử lý
-                        </button>
-                      </div>
-                      {aiContext?.id === student.id && (
-                        <div style={{padding: '0 20px 16px 72px'}} className="animate-fade">
-                          <div style={{background: 'var(--ta-bg3)', padding: '16px', borderRadius: '12px', border: '1px solid var(--ta-accent-bg)', display: 'flex', alignItems: 'center', gap: '12px'}}>
-                            <div className="sb-icon" style={{background: 'var(--ta-accent-bg)', color: 'var(--ta-accent)', width: '32px', height: '32px'}}><FiCpu /></div>
-                            <div style={{flex: 1}}>
-                              <div style={{fontSize: '12px', fontWeight: 600, color: 'var(--ta-text)'}}>Đã chuẩn bị bộ Context cho học viên {student.profiles?.display_name}</div>
-                              <div style={{fontSize: '11px', color: 'var(--ta-text3)', marginTop: '2px'}}>Dữ liệu đã được lưu trữ an toàn. Agent sẽ tự động lấy thông tin này để soạn tin nhắn.</div>
+                  atRiskList.map(student => {
+                    const score = student.metadata?.score || 0;
+                    return (
+                      <div key={student.id} style={{borderBottom: '1px solid var(--ta-border)'}}>
+                        <div className="ta-row">
+                          <img src={student.profiles?.avatar_url || 'https://ui-avatars.com/api/?name=' + (student.profiles?.display_name || 'Student')} className="student-av" alt={student.profiles?.display_name} />
+                          <div className="cell-info" style={{flex: 2}}>
+                            <div className="cell-name" style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+                              {student.profiles?.display_name || 'Học viên'}
+                              <div style={{
+                                fontSize: '11px', fontWeight: 800, color: getRiskColor(score),
+                                background: getRiskColor(score) + '11', padding: '2px 8px', borderRadius: '4px',
+                                border: `1px solid ${getRiskColor(score)}33`
+                              }}>
+                                SCORE: {score}
+                              </div>
                             </div>
-                            <button className="ta-btn" style={{fontSize: '11px'}} onClick={() => setAiContext(null)}>Đóng</button>
+                            <div className="cell-sub" style={{color: 'var(--ta-text2)', fontWeight: 500}}>
+                              {student.reason}
+                            </div>
+                          </div>
+                          
+                          <div style={{display: 'flex', gap: '8px'}}>
+                            <button className="ta-btn" style={{borderColor: 'var(--ta-accent)', color: 'var(--ta-accent)'}} onClick={() => handleGetAiContext(student.id)}>
+                              <FiMessageSquare /> Agent Soạn tin
+                            </button>
+                            <button className="ta-btn" onClick={() => handleResolveAlert(student.id)}>
+                              <FiCheckCircle /> Đã hỗ trợ
+                            </button>
                           </div>
                         </div>
-                      )}
-                    </div>
-                  ))
+                        {aiContext?.id === student.id && (
+                          <div style={{padding: '0 20px 16px 72px'}} className="animate-fade">
+                            <div style={{background: 'var(--ta-bg3)', padding: '16px', borderRadius: '12px', border: '1px solid var(--ta-accent-bg)', display: 'flex', alignItems: 'center', gap: '12px'}}>
+                              <div className="sb-icon" style={{background: 'var(--ta-accent-bg)', color: 'var(--ta-accent)', width: '32px', height: '32px'}}><FiCpu /></div>
+                              <div style={{flex: 1}}>
+                                <div style={{fontSize: '12px', fontWeight: 600, color: 'var(--ta-text)'}}>
+                                  Chuẩn bị Context cho Agent (Risk Level: {student.level.toUpperCase()})
+                                </div>
+                                <div style={{fontSize: '11px', color: 'var(--ta-text3)', marginTop: '2px'}}>
+                                  Tín hiệu: {student.metadata?.signals?.join(', ')}. Agent sẽ dùng dữ liệu này để cá nhân hóa tin nhắn.
+                                </div>
+                              </div>
+                              <button className="ta-btn" style={{fontSize: '11px'}} onClick={() => setAiContext(null)}>Đóng</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -283,7 +310,7 @@ const TADashboard = () => {
                              {uploadedFile ? uploadedFile.filename : 'Tải lên Slide bài giảng (PDF, IMG)'}
                            </div>
                            <div style={{fontSize: '12px', color: 'var(--ta-text3)', marginTop: '4px'}}>
-                             {uploadedFile ? `${(uploadedFile.size/1024).toFixed(1)} KB - Đã sẵn sàng` : 'Hệ thống sẽ kết hợp Slide và Chat Log để tóm tắt'}
+                             Hệ thống sẽ kết hợp Slide và Chat Log để tóm tắt
                            </div>
                            <input type="file" style={{display: 'none'}} id="slide-upload" accept=".pdf,image/*" onChange={handleFileUpload} />
                         </div>
@@ -308,7 +335,7 @@ const TADashboard = () => {
                         <div className="brain-icon"><FiCpu /></div>
                         <div style={{fontWeight: 700, fontSize: '18px', color: 'var(--ta-text)', marginBottom: '8px'}}>AI ĐANG TỔNG HỢP...</div>
                         <div style={{fontSize: '13px', color: 'var(--ta-text3)', maxWidth: '400px', margin: '0 auto'}}>
-                          Đang đọc tài liệu {uploadedFile?.filename} và quét nội dung thảo luận trong lớp học để soạn bản thảo tóm tắt.
+                          Đang phân tích tài liệu và nội dung thảo luận để soạn bản tóm tắt bài giảng.
                         </div>
                      </div>
                    )}
@@ -357,7 +384,7 @@ const TADashboard = () => {
                           
                           <div style={{display: 'flex', gap: '10px', marginTop: '20px'}}>
                             <button className="ta-btn" style={{height: '42px', padding: '0 20px'}} onClick={() => setCurrentStep(1)}>
-                              <FiRefreshCw /> Làm lại
+                              Làm lại
                             </button>
                             <button className="vibrant-btn" style={{height: '42px', minWidth: '180px'}} onClick={handleApproveSummary}>
                               <FiCheckCircle /> {sendTime === 'now' ? 'Duyệt & Đăng bài' : 'Xác nhận đặt lịch'}
@@ -370,24 +397,59 @@ const TADashboard = () => {
               </div>
             </div>
           ) : (
-            <div className="animate-fade">
-              {/* Logs Tab */}
+            <div className="animate-fade" style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px'}}>
               <div className="ta-card">
-                <div className="card-head"><span style={{fontWeight: 600}}>📜 Lịch sử hành động</span></div>
-                {actionLogs.length === 0 ? (
-                  <div className="empty-state"><p>Chưa có hành động nào.</p></div>
-                ) : (
-                  actionLogs.map(log => (
-                    <div key={log.id} className="ta-row">
-                      <div className="sb-icon" style={{background: 'var(--ta-bg4)'}}>{log.action_type === 'dismissed_alert' ? '✅' : log.action_type === 'upload_document' ? '📁' : '📝'}</div>
-                      <div className="cell-info">
-                        <div className="cell-name"><strong>{log.ta?.display_name || 'TA'}</strong> {log.action_type === 'dismissed_alert' ? 'đã xử lý cảnh báo cho' : log.action_type === 'upload_document' ? 'đã tải lên' : 'đã duyệt tóm tắt'}</div>
-                        <div className="cell-sub">{log.notes}</div>
+                <div className="card-head">
+                  <span style={{fontWeight: 600, color: 'var(--ta-red)', display: 'flex', alignItems: 'center', gap: '8px'}}>
+                    <FiAlertCircle /> Nhật ký Cảnh báo học viên
+                  </span>
+                </div>
+                <div style={{maxHeight: '600px', overflowY: 'auto'}}>
+                  {atRiskLogs.length === 0 ? (
+                    <div className="empty-state"><p>Chưa có dữ liệu.</p></div>
+                  ) : (
+                    atRiskLogs.map(log => (
+                      <div key={log.id} className="ta-row" style={{padding: '12px 16px'}}>
+                        <div className="cell-info">
+                          <div className="cell-name" style={{fontSize: '13px'}}>
+                            <strong>{log.ta?.display_name || 'TA'}</strong> đã xử lý cảnh báo
+                          </div>
+                          <div className="cell-sub">{log.notes}</div>
+                          <div style={{fontSize: '10px', color: 'var(--ta-text3)', marginTop: '4px'}}>
+                            {new Date(log.created_at).toLocaleString('vi-VN')}
+                          </div>
+                        </div>
                       </div>
-                      <div style={{fontSize: '11px', color: 'var(--ta-text3)'}}>{new Date(log.created_at).toLocaleString('vi-VN')}</div>
-                    </div>
-                  ))
-                )}
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="ta-card">
+                <div className="card-head">
+                  <span style={{fontWeight: 600, color: 'var(--ta-accent)', display: 'flex', alignItems: 'center', gap: '8px'}}>
+                    <FiFileText /> Nhật ký Tóm tắt bài giảng
+                  </span>
+                </div>
+                <div style={{maxHeight: '600px', overflowY: 'auto'}}>
+                  {summaryLogs.length === 0 ? (
+                    <div className="empty-state"><p>Chưa có dữ liệu.</p></div>
+                  ) : (
+                    summaryLogs.map(log => (
+                      <div key={log.id} className="ta-row" style={{padding: '12px 16px'}}>
+                        <div className="cell-info">
+                          <div className="cell-name" style={{fontSize: '13px'}}>
+                            <strong>{log.ta?.display_name || 'TA'}</strong> đã phát hành tóm tắt
+                          </div>
+                          <div className="cell-sub">{log.notes}</div>
+                          <div style={{fontSize: '10px', color: 'var(--ta-text3)', marginTop: '4px'}}>
+                            {new Date(log.created_at).toLocaleString('vi-VN')}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
           )}
