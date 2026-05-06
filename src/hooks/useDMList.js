@@ -1,12 +1,37 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { dmService } from "../services/dm.service";
 import socketService from "../services/socket.service";
 import {
-  fetchConversations,
   updateUserStatus,
   updateUserProfile,
 } from "../store/slices/dmSlice";
+
+// Format relative time for DM list
+function formatRelativeTime(dateStr) {
+  if (!dateStr) return "";
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return "";
+
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHour = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHour / 24);
+
+  if (diffSec < 60) return "Vừa xong";
+  if (diffMin < 60) return `${diffMin} phút`;
+  if (diffHour < 24) return `${diffHour} giờ`;
+
+  const isYesterday =
+    now.getDate() - date.getDate() === 1 &&
+    now.getMonth() === date.getMonth() &&
+    now.getFullYear() === date.getFullYear();
+  if (isYesterday) return "Hôm qua";
+
+  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
 
 const CONVERSATIONS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
@@ -40,9 +65,10 @@ function matchesStudyBot(query) {
 
 export function useDMList() {
   const dispatch = useDispatch();
-  const { conversations, onlineUsers, conversationsFetched } = useSelector(
+  const { conversations, onlineUsers, conversationsFetched, messages: messagesMap } = useSelector(
     (state) => state.dm,
   );
+  const currentUserId = useSelector((state) => state.auth.user?.id);
 
   const [searchResults, setSearchResults] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -50,72 +76,19 @@ export function useDMList() {
   const [error, setError] = useState(null);
   const [onlineStatus, setOnlineStatus] = useState({}); // { [userId]: { online, lastSeen } }
 
-  // Fetch conversations on mount — with localStorage TTL cache
-  const isFetchingRef = useRef(false);
+  // Conversations are now fetched globally in App.jsx after auth
+  // This hook only reads from Redux store, no need to fetch here
+  // Background refresh is handled by App.jsx to avoid duplicate requests
+
+  // Online status now handled globally in App.jsx via Redux
+  // This effect only syncs from Redux to local state for DMList
   useEffect(() => {
-    if (conversationsFetched) return; // Skip: already in Redux
-
-    // Check localStorage cache
-    const lastFetch = localStorage.getItem("dm_conversations_last_fetch");
-    const now = Date.now();
-    if (lastFetch && now - parseInt(lastFetch, 10) < CONVERSATIONS_CACHE_TTL) {
-      return; // Cache still valid
-    }
-
-    if (isFetchingRef.current) return; // Prevent duplicate requests
-    isFetchingRef.current = true;
-
-    dispatch(fetchConversations()).then(() => {
-      localStorage.setItem("dm_conversations_last_fetch", String(Date.now()));
+    const next = {};
+    onlineUsers.forEach((uid) => {
+      next[uid] = { online: true, lastSeen: null };
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch]);
-
-  // 🆕 WebSocket listeners for online status — replaces polling
-  useEffect(() => {
-    const handleUserStatusChanged = (data) => {
-      if (!data?.userId) return;
-      setOnlineStatus((prev) => ({
-        ...prev,
-        [data.userId]: {
-          online: data.status === "online",
-          lastSeen: data.lastSeen || null,
-        },
-      }));
-      dispatch(updateUserStatus({ userId: data.userId, status: data.status }));
-    };
-
-    const handleOnlineUsers = (data) => {
-      if (!data?.users) return;
-      const next = {};
-      data.users.forEach((uid) => {
-        next[uid] = { online: true, lastSeen: null };
-      });
-      setOnlineStatus((prev) => {
-        const merged = { ...prev };
-        // Mark users not in list as offline
-        Object.keys(merged).forEach((uid) => {
-          if (!next[uid]) merged[uid] = { ...merged[uid], online: false };
-        });
-        // Mark users in list as online
-        Object.keys(next).forEach((uid) => {
-          merged[uid] = next[uid];
-        });
-        return merged;
-      });
-    };
-
-    socketService.onUserStatusChanged(handleUserStatusChanged);
-    socketService.onOnlineUsers(handleOnlineUsers);
-
-    // Request initial online users list
-    socketService.getOnlineUsers();
-
-    return () => {
-      socketService.offEvent("userStatusChanged");
-      socketService.offEvent("onlineUsers");
-    };
-  }, [dispatch]);
+    setOnlineStatus(next);
+  }, [onlineUsers]);
 
   // Search users via API
   useEffect(() => {
@@ -194,31 +167,60 @@ export function useDMList() {
     };
   }, [searchQuery, dispatch]);
 
-  // Normalize conversations for UI and sort by latest message (newest first)
+  // Helper: get latest message timestamp from Redux messages
+  const getLatestMessageTime = (conversationId) => {
+    const msgs = messagesMap[conversationId];
+    if (!msgs || msgs.length === 0) return null;
+    return [...msgs].reduce((latest, m) => {
+      const t = m.created_at ? new Date(m.created_at).getTime() : 0;
+      return t > latest ? t : latest;
+    }, 0);
+  };
+
+  // Normalize conversations for UI and sort by latest message timestamp
   const normalizedConversations = [...conversations]
     .sort((a, b) => {
-      const timeA = a.last_message?.created_at
-        ? new Date(a.last_message.created_at).getTime()
-        : 0;
-      const timeB = b.last_message?.created_at
-        ? new Date(b.last_message.created_at).getTime()
-        : 0;
-      return timeB - timeA; // Descending: newest first
+      const timeA = getLatestMessageTime(a.id) || (a.last_message?.created_at ? new Date(a.last_message.created_at).getTime() : 0);
+      const timeB = getLatestMessageTime(b.id) || (b.last_message?.created_at ? new Date(b.last_message.created_at).getTime() : 0);
+      return timeB - timeA; // newest first
     })
-    .map((conv) => ({
-      id: conv.id,
-      userId: conv.other_user?.id,
-      name: conv.other_user?.display_name || "Unknown",
-      avatar: conv.other_user?.avatar_url || null,
-      color: conv.other_user?.color || null,
-      lastMessage: conv.last_message?.content || "",
-      hasNewMessage: (conv.unread_count || 0) > 0,
-      unreadCount: conv.unread_count || 0,
-      isBot: false,
-      email: conv.other_user?.email || "",
-      mutualFriends: 0,
-      conversation: conv,
-    }));
+    .map((conv) => {
+      // Get latest message from Redux (sorted by created_at)
+      const msgs = messagesMap[conv.id];
+      let latestMsg = null;
+      if (msgs && msgs.length > 0) {
+        latestMsg = [...msgs].sort((m1, m2) => {
+          const t1 = m1.created_at ? new Date(m1.created_at).getTime() : 0;
+          const t2 = m2.created_at ? new Date(m2.created_at).getTime() : 0;
+          return t2 - t1;
+        })[0];
+      }
+      const apiLastMsg = conv.last_message;
+      const msgToShow = latestMsg || apiLastMsg;
+
+      const isOwn = msgToShow?.sender_id && currentUserId && String(msgToShow.sender_id) === String(currentUserId);
+      const prefix = isOwn ? "Bạn: " : "";
+      const content = msgToShow?.content || "";
+      const lastMessageText = content ? `${prefix}${content}` : (conv.isBot ? "Trợ lý AI" : "Bắt đầu trò chuyện");
+
+      const timeStr = formatRelativeTime(msgToShow?.created_at || msgToShow?.timestamp);
+
+      return {
+        id: conv.id,
+        userId: conv.other_user?.id,
+        name: conv.other_user?.display_name || "Unknown",
+        avatar: conv.other_user?.avatar_url || null,
+        color: conv.other_user?.color || null,
+        lastMessage: lastMessageText,
+        lastMessageTime: timeStr,
+        hasNewMessage: (conv.unread_count || 0) > 0,
+        unreadCount: conv.unread_count || 0,
+        isBot: false,
+        email: conv.other_user?.email || "",
+        mutualFriends: 0,
+        conversation: conv,
+      };
+    });
 
   const filteredConversations = searchQuery.trim()
     ? normalizedConversations.filter((dm) =>

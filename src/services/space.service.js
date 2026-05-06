@@ -4,6 +4,21 @@ export const spaceService = {
   // Get all spaces
   getAll: () => api.get("/spaces"),
 
+  // Get all spaces with rooms included
+  getAllWithRooms: async () => {
+    console.log("[spaceService.getAllWithRooms] ➡️  Calling GET /spaces/with-rooms");
+    const startTime = performance.now();
+    const response = await api.get("/spaces/with-rooms");
+    const elapsed = Math.round(performance.now() - startTime);
+    const spaces = response.data?.data || response.data?.spaces || response.data || [];
+    console.log(`[spaceService.getAllWithRooms] ✅ Response in ${elapsed}ms`);
+    console.log("  status:", response.status);
+    console.log("  count:", spaces.length);
+    console.log("  spaces (FULL):", spaces);
+    console.log("  raw response:", response.data);
+    return response;
+  },
+
   // Get space by ID
   getById: (id) => api.get(`/spaces/${id}`),
 

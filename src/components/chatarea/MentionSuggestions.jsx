@@ -1,14 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { dmUsers } from "../../data/mockData";
-
-const AGENT_MENTION = {
-  id: "__AGENT__",
-  name: "agent",
-  avatar: "🤖",
-  isBot: true,
-  isAgent: true,
-  email: "agent@vinclassroom.edu.vn",
-};
+import { useSelector } from "react-redux";
 
 function MentionSuggestions({
   onSelect,
@@ -19,26 +10,51 @@ function MentionSuggestions({
   const [selectedIndex, setSelectedIndex] = useState(externalSelectedIndex);
   const listRef = useRef(null);
 
-  // Filter users based on filterText, include Agent option
-  const filteredUsers = dmUsers.filter((user) =>
+  // Get real users from Redux store (space members + DM conversations)
+  const { conversations } = useSelector((state) => state.dm);
+  const { membersMap } = useSelector((state) => state.space);
+
+  // Build user list from real data
+  const allUsers = (() => {
+    const users = [];
+    const seenIds = new Set();
+
+    // Add users from DM conversations
+    conversations.forEach((conv) => {
+      const ou = conv.other_user;
+      if (ou && !seenIds.has(ou.id)) {
+        seenIds.add(ou.id);
+        users.push({
+          id: ou.id,
+          name: ou.display_name || ou.name || "Unknown",
+          avatar: ou.display_name?.charAt(0).toUpperCase() || ou.name?.charAt(0).toUpperCase() || "?",
+          isBot: false,
+        });
+      }
+    });
+
+    // Add users from space members
+    Object.values(membersMap).flat().forEach((member) => {
+      if (member && !seenIds.has(member.id)) {
+        seenIds.add(member.id);
+        users.push({
+          id: member.id,
+          name: member.display_name || member.name || member.email || "Unknown",
+          avatar: member.display_name?.charAt(0).toUpperCase() || member.name?.charAt(0).toUpperCase() || "?",
+          isBot: false,
+        });
+      }
+    });
+
+    return users;
+  })();
+
+  // Filter users based on filterText
+  const filteredUsers = allUsers.filter((user) =>
     user.name.toLowerCase().includes((filterText || "").toLowerCase()),
   );
 
-  // Add Agent to the list if filter matches "agent" or empty
-  const lowerFilter = (filterText || "").toLowerCase();
-  const showAgent =
-    !lowerFilter ||
-    "agent".includes(lowerFilter) ||
-    lowerFilter.includes("agent") ||
-    lowerFilter.includes("trợ") ||
-    lowerFilter.includes("lý") ||
-    lowerFilter.includes("ai");
-
-  const allSuggestions = showAgent
-    ? [AGENT_MENTION, ...filteredUsers]
-    : filteredUsers;
-
-  console.log("[MentionSuggestions] filter:", lowerFilter, "showAgent:", showAgent, "suggestions:", allSuggestions.map((s) => s.name));
+  const allSuggestions = filteredUsers;
 
   // Reset selected index when filter changes or external index changes
   useEffect(() => {
@@ -112,11 +128,9 @@ function MentionSuggestions({
           <div
             className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-semibold flex-shrink-0"
             style={{
-              background: user.isAgent
+              background: user.isBot
                 ? "var(--tertiary-active)"
-                : user.isBot
-                  ? "var(--tertiary-active)"
-                  : "var(--primary)",
+                : "var(--primary)",
               color: user.isBot ? "var(--tertiary)" : "#fff",
             }}
           >
@@ -127,17 +141,9 @@ function MentionSuggestions({
               className="font-medium truncate"
               style={{ color: "var(--text-primary)" }}
             >
-              {user.isAgent ? "@agent" : user.name}
+              {user.name}
             </div>
-            {user.isAgent && (
-              <div
-                className="text-xs"
-                style={{ color: "var(--tertiary)" }}
-              >
-                Trợ lý AI — Gọi Agent để trả lờ
-              </div>
-            )}
-            {user.isBot && !user.isAgent && (
+            {user.isBot && (
               <div
                 className="text-xs"
                 style={{ color: "var(--text-secondary)" }}

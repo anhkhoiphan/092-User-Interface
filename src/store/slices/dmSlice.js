@@ -1,7 +1,15 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import { dmService } from "../../services/dm.service";
+import { spaceService } from "../../services/space.service";
+import { messageService } from "../../services/message.service";
 import socketService from "../../services/socket.service";
 import { logout } from "./authSlice";
+import {
+  setAppLoading,
+  setAppLoadingPhase,
+  setAppLoadingError,
+} from "./appSlice";
+import { getCachedMessages, hasCache, getCachedConversations, hasConversationsCache } from "../messageCache";
 
 // ==================== Async Thunks ====================
 
@@ -9,16 +17,24 @@ export const fetchConversations = createAsyncThunk(
   "dm/fetchConversations",
   async (_, { rejectWithValue }) => {
     try {
-      console.log("[fetchConversations] Calling API...");
-      const { data } = await dmService.getConversations({ page: 1, limit: 20 });
+      console.log("%c[fetchConversations] ➡️  Thunk started", "color: #3b82f6; font-weight: bold;");
+      const thunkStart = performance.now();
+      const { data } = await dmService.getConversations({ page: 1, limit: 100 });
       const result = data.data || data.conversations || data || [];
-      console.log("[fetchConversations] Result:", {
+      const elapsed = Math.round(performance.now() - thunkStart);
+      console.log(`%c[fetchConversations] ✅ Thunk completed in ${elapsed}ms`, "color: #22c55e; font-weight: bold;", {
         count: result.length,
         ids: result.map((c) => c.id),
+        firstConversation: result[0] ? {
+          id: result[0].id,
+          otherUser: result[0].other_user?.display_name || result[0].other_user?.username,
+          lastMessage: result[0].last_message?.content?.substring(0, 50),
+          unreadCount: result[0].unread_count,
+        } : null,
       });
       return result;
     } catch (err) {
-      console.error("[fetchConversations] Error:", err);
+      console.error("%c[fetchConversations] ❌ Error:", "color: #ef4444; font-weight: bold;", err);
       return rejectWithValue(
         err.response?.data?.message || "Không thể tải danh sách trò chuyện",
       );
@@ -75,7 +91,69 @@ export const markConversationAsRead = createAsyncThunk(
   },
 );
 
-// 🆕 Preload all DM data: conversations + messages + join all WS rooms
+export const preloadAllData = createAsyncThunk(
+  "dm/preloadAll",
+  async (_, { dispatch, rejectWithValue }) => {
+    try {
+      dispatch(setAppLoading(true));
+      dispatch(setAppLoadingPhase("conversations"));
+
+      console.log("%c[preloadAllData] >> Bắt đầu preload...", "color: #8b5cf6; font-weight: bold; font-size: 13px;");
+      const preloadStart = performance.now();
+
+      // ─── Phase 1: Fetch conversations + spaces song song ───
+      const [conversations, spacesResponse] = await Promise.allSettled([
+        dispatch(fetchConversations()).unwrap(),
+        spaceService.getAllWithRooms(),
+      ]);
+
+      const spaces =
+        spacesResponse.status === "fulfilled"
+          ? (spacesResponse.value.data?.data || spacesResponse.value.data?.spaces || spacesResponse.value.data || [])
+          : [];
+
+      const roomsMap = {};
+      spaces.forEach((space) => {
+        if (space.rooms && Array.isArray(space.rooms)) {
+          roomsMap[space.id] = space.rooms;
+        }
+      });
+
+      // ─── Phase 2: Join all DM rooms via WebSocket ───
+      const convList = conversations.status === "fulfilled" ? conversations.value : [];
+      convList.forEach((conv) => {
+        socketService.joinDM(conv.id);
+      });
+
+      const elapsed = Math.round(performance.now() - preloadStart);
+      console.log(`%c[preloadAllData] << Hoàn tất preload trong ${elapsed}ms`, "color: #8b5cf6; font-weight: bold; font-size: 13px;", {
+        conversations: convList.length,
+        spaces: spaces.length,
+      });
+
+      dispatch(setAppLoadingPhase("complete"));
+      dispatch(setAppLoading(false));
+
+      return {
+        conversations: convList,
+        spaces,
+        roomsMap,
+        members: [],
+        dmMessages: [],
+        roomMessages: [],
+      };
+    } catch (err) {
+      console.error("[preloadAllData] Preload failed:", err);
+      dispatch(setAppLoading(false));
+      dispatch(setAppLoadingError(err.response?.data?.message || "Không thể tải dữ liệu"));
+      return rejectWithValue(
+        err.response?.data?.message || "Không thể tải dữ liệu",
+      );
+    }
+  },
+);
+
+// 🆕 Preload all DM data: conversations + messages + join all WS rooms (legacy, kept for compatibility)
 export const preloadDMData = createAsyncThunk(
   "dm/preload",
   async (_, { dispatch, rejectWithValue }) => {
@@ -202,12 +280,21 @@ const dmSlice = createSlice({
       const messages = state.messages[conversationId];
 
       // Check if this is a real message replacing a pending one
-      const pendingIndex = messages.findIndex(
-        (m) =>
-          m.pending &&
-          m.sender_id === message.sender_id &&
-          m.content === message.content,
-      );
+      // Match by tempId first, then by content + sender_id
+      let pendingIndex = -1;
+      if (message.tempId) {
+        pendingIndex = messages.findIndex(
+          (m) => m.pending && m.id === message.tempId,
+        );
+      }
+      if (pendingIndex === -1) {
+        pendingIndex = messages.findIndex(
+          (m) =>
+            m.pending &&
+            m.sender_id === message.sender_id &&
+            m.content === message.content,
+        );
+      }
       if (pendingIndex !== -1) {
         const exists = messages.some((m) => m.id === message.id);
         if (exists) {
@@ -215,7 +302,7 @@ const dmSlice = createSlice({
           messages.splice(pendingIndex, 1);
         } else {
           // Replace pending message with real one
-          messages[pendingIndex] = { ...message, pending: false };
+          messages[pendingIndex] = { ...message, pending: false, failed: false };
         }
         return;
       }
@@ -272,22 +359,23 @@ const dmSlice = createSlice({
     },
 
     setOnlineUsers: (state, action) => {
-      state.onlineUsers = action.payload;
+      state.onlineUsers = (action.payload || []).map(String);
     },
 
     updateUserStatus: (state, action) => {
       const { userId, status } = action.payload;
+      const userIdStr = String(userId);
       // Update online users list
       if (status === "online") {
-        if (!state.onlineUsers.includes(userId)) {
-          state.onlineUsers.push(userId);
+        if (!state.onlineUsers.includes(userIdStr)) {
+          state.onlineUsers.push(userIdStr);
         }
       } else {
-        state.onlineUsers = state.onlineUsers.filter((id) => id !== userId);
+        state.onlineUsers = state.onlineUsers.filter((id) => String(id) !== userIdStr);
       }
       // Update conversation other_user status
       state.conversations = state.conversations.map((conv) => {
-        if (conv.other_user?.id === userId) {
+        if (conv.other_user?.id === userId || String(conv.other_user?.id) === userIdStr) {
           return { ...conv, other_user: { ...conv.other_user, status } };
         }
         return conv;
@@ -352,6 +440,71 @@ const dmSlice = createSlice({
       delete state.fetchedConversations[action.payload];
     },
 
+    // Load messages from localStorage cache
+    loadMessagesFromCache: (state, action) => {
+      const { conversationId } = action.payload;
+      if (!conversationId) return;
+      // Skip if already loaded in Redux
+      if (state.messages[conversationId]?.length > 0) return;
+
+      const cached = getCachedMessages("dm", conversationId);
+      if (cached && cached.messages.length > 0) {
+        state.messages[conversationId] = cached.messages;
+        state.fetchedConversations[conversationId] = true;
+      }
+    },
+
+    // Load conversations list from localStorage cache
+    loadConversationsFromCache: (state) => {
+      // Skip if already loaded in Redux
+      if (state.conversations.length > 0 || state.conversationsFetched) return;
+
+      const cached = getCachedConversations();
+      if (cached && cached.conversations.length > 0) {
+        // Load cached messages for each conversation to ensure lastMessage is correct
+        const conversationsWithUpdatedLastMessage = cached.conversations.map((conv) => {
+          const msgCache = getCachedMessages("dm", conv.id);
+          if (msgCache && msgCache.messages.length > 0) {
+            // Find latest message from cache
+            const latestMsg = [...msgCache.messages].sort((a, b) => {
+              const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+              const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+              return tB - tA;
+            })[0];
+
+            // Update last_message in conversation if cached message is newer
+            const cachedLastTime = latestMsg?.created_at ? new Date(latestMsg.created_at).getTime() : 0;
+            const convLastTime = conv.last_message?.created_at ? new Date(conv.last_message.created_at).getTime() : 0;
+
+            if (latestMsg && cachedLastTime >= convLastTime) {
+              return {
+                ...conv,
+                last_message: {
+                  id: latestMsg.id,
+                  content: latestMsg.content,
+                  created_at: latestMsg.created_at,
+                  sender_id: latestMsg.sender_id,
+                },
+              };
+            }
+          }
+          return conv;
+        });
+
+        state.conversations = conversationsWithUpdatedLastMessage;
+        state.conversationsFetched = true;
+
+        // Also load messages into messages map
+        cached.conversations.forEach((conv) => {
+          const msgCache = getCachedMessages("dm", conv.id);
+          if (msgCache && msgCache.messages.length > 0) {
+            state.messages[conv.id] = msgCache.messages;
+            state.fetchedConversations[conv.id] = true;
+          }
+        });
+      }
+    },
+
     setConversationsFetched: (state, action) => {
       state.conversationsFetched = action.payload;
     },
@@ -365,12 +518,19 @@ const dmSlice = createSlice({
     replaceTempConversation: (state, action) => {
       const { tempId, realConversation } = action.payload;
 
-      // Update conversations list
-      const idx = state.conversations.findIndex((c) => c.id === tempId);
-      if (idx !== -1) {
-        state.conversations[idx] = realConversation;
+      // Update conversations list — avoid duplicates
+      const existingIdx = state.conversations.findIndex((c) => c.id === realConversation.id);
+      if (existingIdx !== -1) {
+        // Real conversation already exists (e.g. from WebSocket or API race)
+        // Just update it in place
+        state.conversations[existingIdx] = realConversation;
       } else {
-        state.conversations.unshift(realConversation);
+        const tempIdx = state.conversations.findIndex((c) => c.id === tempId);
+        if (tempIdx !== -1) {
+          state.conversations[tempIdx] = realConversation;
+        } else {
+          state.conversations.unshift(realConversation);
+        }
       }
 
       // Update active conversation if it matches
@@ -497,7 +657,9 @@ const dmSlice = createSlice({
     builder
       // fetchConversations
       .addCase(fetchConversations.pending, (state) => {
-        state.loading = true;
+        // Skip loading skeleton if we have cached conversations
+        const hasCachedConvs = hasConversationsCache();
+        state.loading = !hasCachedConvs;
         state.error = null;
       })
       .addCase(fetchConversations.fulfilled, (state, action) => {
@@ -517,10 +679,9 @@ const dmSlice = createSlice({
       .addCase(createOrGetConversation.fulfilled, (state, action) => {
         state.loading = false;
         const conv = action.payload;
-        const exists = state.conversations.find((c) => c.id === conv.id);
-        if (!exists) {
-          state.conversations.unshift(conv);
-        }
+        // NOTE: We do NOT add to conversations here.
+        // The caller (ChatArea) handles this via replaceTempConversation
+        // to avoid duplicates when swapping temp -> real conversation.
         state.activeConversationId = conv.id;
         state.activeConversation = conv;
       })
@@ -529,7 +690,9 @@ const dmSlice = createSlice({
         state.error = action.payload;
       })
       // fetchMessages
-      .addCase(fetchMessages.pending, (state) => {
+      .addCase(fetchMessages.pending, (state, action) => {
+        const { conversationId } = action.meta.arg || {};
+        // Always show loading skeleton when fetching messages
         state.messagesLoading = true;
         state.messagesError = null;
       })
@@ -584,7 +747,23 @@ const dmSlice = createSlice({
         }
         state.unreadCounts[conversationId] = 0;
       })
-      // 🆕 preloadDMData
+      // 🆕 preloadAllData
+      .addCase(preloadAllData.pending, (state) => {
+        state.preloadPhase = "conversations";
+        state.preloadError = null;
+      })
+      .addCase(preloadAllData.fulfilled, (state, action) => {
+        state.preloadComplete = true;
+        state.preloadPhase = "complete";
+        // Set conversations from payload
+        state.conversations = action.payload.conversations;
+        state.conversationsFetched = true;
+      })
+      .addCase(preloadAllData.rejected, (state, action) => {
+        state.preloadError = action.payload;
+        state.preloadPhase = "idle";
+      })
+      // 🆕 preloadDMData (legacy)
       .addCase(preloadDMData.pending, (state) => {
         state.preloadPhase = "conversations";
         state.preloadError = null;
@@ -633,6 +812,9 @@ export const {
   clearUnreadCount,
   setLastReadMessageId,
   addConversation,
+  // 🆕 Cache exports
+  loadMessagesFromCache,
+  loadConversationsFromCache,
 } = dmSlice.actions;
 
 export default dmSlice.reducer;

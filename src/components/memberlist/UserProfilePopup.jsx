@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSelector } from "react-redux";
 import { FiUserPlus, FiMessageSquare, FiX } from "react-icons/fi";
 import { getUserColor } from "../../utils/userColor";
 
@@ -11,6 +12,9 @@ function UserProfilePopup({
 }) {
   const [messageInput, setMessageInput] = useState("");
   const userColor = getUserColor(user.name, user.color);
+  const onlineUsers = useSelector((state) => state.dm.onlineUsers);
+  const isOnlineRealtime = user?.id && onlineUsers.includes(String(user.id));
+  const isOnline = isOnlineRealtime || user?.isOnline || false;
 
   const handleSendMessage = () => {
     if (messageInput.trim() && onSendMessage) {
@@ -67,8 +71,7 @@ function UserProfilePopup({
               className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2"
               style={{
                 borderColor: isDark ? "var(--bg-surface-secondary)" : "#fff",
-                background: user.isOnline ? "var(--online)" : "var(--offline)",
-              }}
+                background: isOnline ? "var(--online)" : "var(--offline)",              }}
             />
           </div>
         </div>

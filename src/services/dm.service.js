@@ -8,10 +8,17 @@ export const dmService = {
 
   /** Get list of conversations */
   getConversations: async (params) => {
+    console.log("[dmService.getConversations] ➡️  Calling GET /dms with params:", params);
+    const startTime = performance.now();
     const response = await api.get("/dms", { params });
-    console.log("[dmService.getConversations] API response:", {
-      count: response.data?.data?.length || response.data?.conversations?.length || response.data?.length || 0,
-      data: response.data,
+    const elapsed = Math.round(performance.now() - startTime);
+    const conversations = response.data?.data || response.data?.conversations || response.data || [];
+    console.log(`[dmService.getConversations] ✅ Response in ${elapsed}ms:`, {
+      status: response.status,
+      count: conversations.length,
+      ids: conversations.map((c) => c.id),
+      names: conversations.map((c) => c.other_user?.display_name || c.other_user?.username || "Unknown"),
+      raw: response.data,
     });
     return response;
   },

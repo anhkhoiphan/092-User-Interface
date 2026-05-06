@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { store } from "./store/store.js";
 import "./App.css";
@@ -17,13 +17,16 @@ import AppLoadingScreen from "./components/AppLoadingScreen";
 import { initializeAuth } from "./store/slices/authSlice";
 import {
   addMessage as addDMMessage,
+  updateMessage as updateDMMessage,
   updateConversationLastMessage,
   incrementUnreadCount,
-  preloadDMData,
   addConversation,
-  updateMessage,
   clearUnreadCount,
+  setOnlineUsers,
+  updateUserStatus,
+  preloadAllData,
 } from "./store/slices/dmSlice";
+import { addMessage } from "./store/slices/messageSlice";
 import socketService from "./services/socket.service";
 
 function App() {
@@ -33,9 +36,7 @@ function App() {
   const { isAuthenticated, initialized, loading, isLoggingOut } = useSelector(
     (state) => state.auth,
   );
-  const { preloadComplete, preloadPhase, preloadError } = useSelector(
-    (state) => state.dm,
-  );
+  const { appLoading, appLoadingPhase } = useSelector((state) => state.app);
 
   const [createTab, setCreateTab] = useState("space");
   const [editingAgent, setEditingAgent] = useState(null);
@@ -54,7 +55,24 @@ function App() {
     }
   }, [dispatch, initialized, loading]);
 
-  // 2. Connect WebSocket when authenticated
+  // 2. Fetch ALL data once after auth is ready
+  const preloadStartTime = useRef(null);
+  useEffect(() => {
+    if (!isAuthenticated || !initialized) return;
+    preloadStartTime.current = performance.now();
+    dispatch(preloadAllData());
+  }, [isAuthenticated, initialized, dispatch]);
+
+  // Log preload time when loading finishes
+  useEffect(() => {
+    if (!appLoading && preloadStartTime.current !== null) {
+      const elapsed = Math.round(performance.now() - preloadStartTime.current);
+      console.log(`%c[Preload] Tất cả data đã load xong trong ${elapsed}ms`, "color: #22c55e; font-weight: bold; font-size: 14px;");
+      preloadStartTime.current = null;
+    }
+  }, [appLoading]);
+
+  // 3. Connect WebSocket when authenticated
   useEffect(() => {
     if (isAuthenticated) {
       socketService.connect();
@@ -67,20 +85,9 @@ function App() {
     };
   }, [isAuthenticated]);
 
-  // 🆕 3. Preload DM data after auth + socket connected
-  useEffect(() => {
-    if (!isAuthenticated || !initialized) return;
-    if (preloadComplete) return;
-
-    dispatch(preloadDMData());
-  }, [isAuthenticated, initialized, preloadComplete, dispatch]);
-
   // ============================================
   // Global WebSocket DM Listener — REGISTERED ONCE ONLY
   // ============================================
-  // This effect runs ONLY when isAuthenticated changes (login/logout).
-  // The handler uses store.getState() to always read fresh Redux state,
-  // so it never needs to re-register when state changes.
   useEffect(() => {
     if (!isAuthenticated) return;
 
@@ -90,7 +97,6 @@ function App() {
       const conversationId = data.conversation_id || data.conversationId;
       if (!conversationId) return;
 
-      // Log receive latency
       const now = Date.now();
       const isOwn = String(data.sender_id) === String(store.getState().auth.user?.id);
       if (!isOwn && data.clientSentAt) {
@@ -101,13 +107,11 @@ function App() {
         );
       }
 
-      // Always read fresh state from store — never stale closure
       const state = store.getState();
       const currentConversations = state.dm.conversations;
       const currentActiveId = state.dm.activeConversationId;
       const currentUserId = state.auth.user?.id;
 
-      // 0. Ensure conversation exists in list
       const convExists = currentConversations.some((c) => c.id === conversationId);
       if (!convExists && data.conversation) {
         dispatch(addConversation(data.conversation));
@@ -127,7 +131,10 @@ function App() {
         );
       }
 
-      // 1. Cache message into Redux
+      if (!convExists) {
+        socketService.joinDM(conversationId);
+      }
+
       dispatch(
         addDMMessage({
           conversationId,
@@ -139,11 +146,11 @@ function App() {
             is_read: data.is_read ?? false,
             created_at: data.created_at || data.timestamp,
             sender: data.sender,
+            tempId: data.tempId || data.temp_id,
           },
         }),
       );
 
-      // 2. Update last_message in conversation list
       dispatch(
         updateConversationLastMessage({
           conversationId,
@@ -155,18 +162,51 @@ function App() {
         }),
       );
 
-      // 3. Increment unread if NOT the currently active conversation
       const isOwnMessage = String(data.sender_id) === String(currentUserId);
       if (conversationId !== currentActiveId && !isOwnMessage) {
         dispatch(incrementUnreadCount({ conversationId }));
       }
     };
 
-    // Handle when other user reads our messages
+    const handleDmSent = (data) => {
+      if (!data?.success || !data?.message) return;
+      const msg = data.message;
+      const conversationId = msg.conversation_id || msg.conversationId;
+      const tempId = data.tempId || data.temp_id;
+      if (!conversationId) return;
+
+      dispatch(
+        addDMMessage({
+          conversationId,
+          message: {
+            id: msg.id,
+            conversation_id: conversationId,
+            sender_id: msg.sender_id,
+            content: msg.content,
+            is_read: msg.is_read ?? false,
+            created_at: msg.created_at || msg.timestamp,
+            sender: msg.sender,
+            tempId,
+          },
+        }),
+      );
+
+      dispatch(
+        updateConversationLastMessage({
+          conversationId,
+          message: {
+            id: msg.id,
+            content: msg.content,
+            created_at: msg.created_at || msg.timestamp,
+          },
+        }),
+      );
+    };
+
     const handleDmMarkedRead = (data) => {
       if (!data?.conversationId || !data?.messageId) return;
       dispatch(
-        updateMessage({
+        updateDMMessage({
           conversationId: data.conversationId,
           messageId: data.messageId,
           updates: { is_read: true },
@@ -174,24 +214,81 @@ function App() {
       );
     };
 
+    const handleConnected = (data) => {
+      if (data?.onlineUsers) {
+        dispatch(setOnlineUsers(data.onlineUsers));
+      }
+    };
+
+    const handleUserStatusChanged = (data) => {
+      if (!data?.userId) return;
+      dispatch(updateUserStatus({ userId: data.userId, status: data.status }));
+    };
+
+    const handleNewMessage = (data) => {
+      console.log("[App] newMessage received:", JSON.stringify(data, null, 2));
+      const roomId = data.room_id || data.roomId;
+      const content = data.content;
+      const author = data.author;
+      const senderId = data.user_id || data.senderId;
+      const id = data.id;
+      const tempId = data.tempId;
+      
+      if (!roomId || !content) return;
+      
+      console.log("[App] newMessage parsed:", { roomId, id, tempId, author, senderId });
+      dispatch(
+        addMessage({
+          roomId,
+          message: {
+            id: id || Date.now(),
+            sender: {
+              id: senderId,
+              display_name: author?.display_name || author?.username || "Unknown",
+              avatar_url: author?.avatar_url || null,
+            },
+            sender_id: senderId,
+            content,
+            created_at: data.created_at || new Date().toISOString(),
+            isPinned: data.is_pinned || false,
+            isOwn: String(senderId) === String(store.getState().auth.user?.id),
+            tempId,
+          },
+        }),
+      );
+    };
+
+    socketService.onConnected(handleConnected);
+    socketService.onUserStatusChanged(handleUserStatusChanged);
     socketService.onNewDM(handleNewDM);
+    socketService.onDmSent(handleDmSent);
     socketService.onDmMarkedRead(handleDmMarkedRead);
+    socketService.onNewMessage(handleNewMessage);
 
     return () => {
-      socketService.offEvent("newDM");
-      socketService.offEvent("dmMarkedRead");
+      socketService.off("connected", handleConnected);
+      socketService.off("userStatusChanged", handleUserStatusChanged);
+      socketService.off("newDM", handleNewDM);
+      socketService.off("dmSent", handleDmSent);
+      socketService.off("dmMarkedRead", handleDmMarkedRead);
+      socketService.off("newMessage", handleNewMessage);
     };
   }, [isAuthenticated, dispatch]);
 
   const currentView = isSettings ? "settings" : activeView;
 
-  // Not initialized yet (checking auth state) OR logging out OR preload in progress
-  if (!initialized || isLoggingOut || (isAuthenticated && !preloadComplete)) {
+  // Not initialized yet (checking auth state) OR logging out
+  if (!initialized || isLoggingOut) {
     return <AppLoadingScreen />;
   }
 
   if (!isAuthenticated) {
     return <LoginPage />;
+  }
+
+  // 🆕 Loading all data after login
+  if (appLoading) {
+    return <AppLoadingScreen />;
   }
 
   const handleEditAgent = (agent) => {

@@ -6,7 +6,10 @@ const initialState = {
   activeRoom: null,
   searchQuery: "",
   isSettings: false,
-  isAgentChat: false,
+  // 🆕 App-level loading state for initial data fetch on F5
+  appLoading: false,
+  appLoadingPhase: "idle", // 'idle' | 'auth' | 'conversations' | 'spaces' | 'rooms' | 'members' | 'messages' | 'complete'
+  appLoadingError: null,
 };
 
 const appSlice = createSlice({
@@ -47,20 +50,24 @@ const appSlice = createSlice({
     openCreateSpace: (state) => {
       state.activeView = "createSpace";
       state.isSettings = false;
-      state.isAgentChat = false;
     },
     cancelCreateSpace: (state) => {
       state.activeView = "space";
     },
-    openAgentChat: (state) => {
-      state.isAgentChat = true;
-      state.isSettings = false;
-      state.activeView = "messages";
-      state.activeRoom = "agent-dm";
+    // 🆕 App loading state reducers
+    setAppLoading: (state, action) => {
+      state.appLoading = action.payload;
     },
-    closeAgentChat: (state) => {
-      state.isAgentChat = false;
-      state.activeRoom = null;
+    setAppLoadingPhase: (state, action) => {
+      state.appLoadingPhase = action.payload;
+    },
+    setAppLoadingError: (state, action) => {
+      state.appLoadingError = action.payload;
+    },
+    resetAppLoading: (state) => {
+      state.appLoading = false;
+      state.appLoadingPhase = "idle";
+      state.appLoadingError = null;
     },
   },
 });
@@ -77,8 +84,11 @@ export const {
   navigateToMessages,
   openCreateSpace,
   cancelCreateSpace,
-  openAgentChat,
-  closeAgentChat,
+  // 🆕 App loading exports
+  setAppLoading,
+  setAppLoadingPhase,
+  setAppLoadingError,
+  resetAppLoading,
 } = appSlice.actions;
 
 export default appSlice.reducer;

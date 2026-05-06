@@ -8,6 +8,8 @@ class SocketService {
     this.listeners = new Map();
     this._connected = false;
     this._activeDMRooms = new Set();
+    this._activeRooms = new Set();
+    this._joinedRooms = new Set(); // Rooms that have received 'joinedRoom' ack
   }
 
   // ==================== Connection ====================
@@ -21,7 +23,10 @@ class SocketService {
     }
 
     this.socket = io(`${SOCKET_URL}/chat`, {
-      auth: { token },
+      // Use auth callback so socket.io reads fresh token on every connect/reconnect
+      auth: (cb) => {
+        cb({ token: localStorage.getItem("access_token") });
+      },
       transports: ["websocket", "polling"],
       reconnection: true,
       reconnectionDelay: 1000,
@@ -40,12 +45,26 @@ class SocketService {
 
     this.socket.on("connect_error", (error) => {
       console.error("[Socket] Connect error:", error.message);
+      // If auth failed due to expired token, try to trigger a token refresh
+      // by making a dummy API call. The axios interceptor will handle 401.
+      if (error.message?.includes("jwt expired") || error.message?.includes("auth")) {
+        this._handleAuthError();
+      }
     });
 
-    this.socket.on("reconnect", (attemptNumber) => {
+    this.socket.on("reconnect", async (attemptNumber) => {
+      console.log("[Socket] Reconnected after", attemptNumber, "attempts");
+      // Re-join all active rooms with fresh token
       this._activeDMRooms.forEach((conversationId) => {
         this.joinDM(conversationId);
       });
+      // Await room joins to ensure server is ready before sending
+      const roomJoinPromises = Array.from(this._activeRooms).map((roomId) =>
+        this.joinRoom(roomId).catch((err) => {
+          console.warn("[Socket] Failed to rejoin room:", roomId, err);
+        }),
+      );
+      await Promise.all(roomJoinPromises);
     });
 
     this.socket.on("reconnect_error", (error) => {
@@ -61,13 +80,36 @@ class SocketService {
     });
   }
 
+  // Trigger a token refresh by making a lightweight API call.
+  // The axios response interceptor will handle 401 and refresh the token.
+  _handleAuthError() {
+    console.log("[Socket] Token may be expired, triggering refresh via API...");
+    // Use a lightweight endpoint to trigger the refresh flow
+    // The access token will be updated in localStorage by the interceptor
+    import("./api").then(({ default: api }) => {
+      api.get("/users/me").catch(() => {
+        // Expected to fail or succeed; either way, token may have been refreshed
+      });
+    });
+  }
+
+  // Reconnect with fresh token. Call this after token refresh succeeds.
+  reconnect() {
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
+    }
+    this.connect();
+  }
+
   disconnect() {
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
-      this._connected = false;
-      this._activeDMRooms.clear();
     }
+    this._connected = false;
+    this._activeDMRooms.clear();
+    this._activeRooms.clear();
   }
 
   isConnected() {
@@ -131,14 +173,48 @@ class SocketService {
   // ==================== Room/Space Events (legacy) ====================
 
   joinRoom(roomId) {
-    this.socket?.emit("joinRoom", roomId);
+    if (!roomId) return Promise.resolve();
+    this._activeRooms.add(roomId);
+    return new Promise((resolve) => {
+      // Fast timeout — don't block UI if server is slow to ack
+      const timeout = setTimeout(() => {
+        this.socket?.off("joinedRoom", onJoined);
+        this._joinedRooms.add(roomId); // Allow sending anyway
+        console.warn("[Socket] joinRoom timeout, allowing sends for:", roomId);
+        resolve({ roomId, timeout: true });
+      }, 1500);
+      const onJoined = (data) => {
+        if (data?.roomId === roomId) {
+          clearTimeout(timeout);
+          this.socket?.off("joinedRoom", onJoined);
+          this._joinedRooms.add(roomId);
+          console.log("[Socket] Joined room:", roomId);
+          resolve(data);
+        }
+      };
+      this.socket?.on("joinedRoom", onJoined);
+      this.socket?.emit("joinRoom", { roomId });
+    });
   }
 
   leaveRoom(roomId) {
-    this.socket?.emit("leaveRoom", roomId);
+    if (!roomId) return;
+    this._activeRooms.delete(roomId);
+    this._joinedRooms.delete(roomId);
+    this.socket?.emit("leaveRoom", { roomId });
   }
 
   sendMessage(data) {
+    const { roomId } = data;
+    // Auto-join if not yet acked but is active room (don't block send)
+    if (roomId && !this._joinedRooms.has(roomId)) {
+      if (this._activeRooms.has(roomId)) {
+        console.warn("[Socket] Room not yet acked, allowing send anyway:", roomId);
+      } else {
+        console.warn("[Socket] Cannot send message - not in active rooms:", roomId);
+        return;
+      }
+    }
     this.socket?.emit("sendMessage", data);
   }
 
@@ -147,11 +223,19 @@ class SocketService {
   }
 
   emitTyping(roomId) {
-    this.socket?.emit("typing", roomId);
+    if (roomId && !this._activeRooms.has(roomId)) {
+      console.warn("[Socket] Cannot emit typing - not active room:", roomId);
+      return;
+    }
+    this.socket?.emit("typing", { roomId });
   }
 
   emitStopTyping(roomId) {
-    this.socket?.emit("stopTyping", roomId);
+    if (roomId && !this._activeRooms.has(roomId)) {
+      console.warn("[Socket] Cannot emit stopTyping - not active room:", roomId);
+      return;
+    }
+    this.socket?.emit("stopTyping", { roomId });
   }
 
   // ==================== Listener Management ====================
@@ -216,6 +300,10 @@ class SocketService {
     this.socket?.on("onlineUsers", callback);
   }
 
+  onConnected(callback) {
+    this.socket?.on("connected", callback);
+  }
+
   // ==================== Notification Listeners ====================
 
   onNewNotification(callback) {
@@ -234,6 +322,10 @@ class SocketService {
 
   onNewMessage(callback) {
     this.socket?.on("newMessage", callback);
+  }
+
+  onMessageSent(callback) {
+    this.socket?.on("messageSent", callback);
   }
 
   onMessageDeleted(callback) {

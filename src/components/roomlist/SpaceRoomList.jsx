@@ -1,9 +1,10 @@
-import { useState } from "react";
-import { useSelector } from "react-redux";
+import { useState, useEffect } from "react";
+import { useSelector, useDispatch } from "react-redux";
 import { FiSearch, FiPlus, FiSliders } from "react-icons/fi";
-import { spaces, rooms } from "../../data/mockData";
+import { createRoom } from "../../store/slices/spaceSlice";
+import { setActiveRoom } from "../../store/slices/appSlice";
 
-function RoomItem({ room, isActive, onClick }) {
+function RoomItem({ room, isActive, onClick, lastMessage, lastMessageTime, unreadCount }) {
   const [isHovered, setIsHovered] = useState(false);
 
   return (
@@ -21,44 +22,60 @@ function RoomItem({ room, isActive, onClick }) {
       onMouseLeave={() => setIsHovered(false)}
       onClick={onClick}
     >
-      {/* Room info - no avatar */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <div
-            className="text-sm font-semibold truncate"
-            style={{ color: "var(--text-primary)" }}
-          >
-            {room.displayName || room.name}
+      {/* Room info */}
+      <div className="flex-1 min-w-0 overflow-hidden">
+        <div className="flex items-center justify-between min-w-0">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <div
+              className="text-sm font-semibold truncate"
+              style={{ color: "var(--text-primary)" }}
+            >
+              {room.name}
+            </div>
+            {room.is_private && (
+              <span
+                className="text-[10px] px-1 py-0.5 rounded flex-shrink-0"
+                style={{
+                  background: "var(--primary-active)",
+                  color: "var(--primary)",
+                }}
+              >
+                Private
+              </span>
+            )}
           </div>
+          {/* Last message time */}
+          {lastMessageTime && (
+            <span
+              className="text-[10px] flex-shrink-0 ml-1"
+              style={{ color: "var(--text-muted)" }}
+            >
+              {lastMessageTime}
+            </span>
+          )}
         </div>
+        {/* Last message */}
         <div
           className="text-xs mt-0.5 truncate"
-          style={{ color: "var(--text-secondary)" }}
+          style={{
+            color: unreadCount > 0
+              ? "var(--text-primary)"
+              : "var(--text-secondary)",
+            fontWeight: unreadCount > 0 ? 500 : 400,
+          }}
         >
-          {room.lastMessage || "Chưa có tin nhắn"}
+          {lastMessage || "Bắt đầu trò chuyện"}
         </div>
       </div>
 
-      {/* Notification badge */}
-      {room.hasNotification && room.unreadCount && (
+      {/* Unread badge */}
+      {unreadCount > 0 && (
         <span
-          className="flex items-center justify-center text-[11px] font-semibold flex-shrink-0"
-          style={{
-            background: "var(--notification)",
-            color: "#fff",
-            width: "20px",
-            height: "20px",
-            borderRadius: "50%",
-          }}
+          className="px-1.5 py-0.5 rounded-full text-[10px] font-bold text-white flex-shrink-0"
+          style={{ background: "#ef4444", lineHeight: 1 }}
         >
-          {room.unreadCount}
+          {unreadCount > 99 ? "99+" : unreadCount}
         </span>
-      )}
-      {room.hasNotification && !room.unreadCount && (
-        <div
-          className="w-2 h-2 rounded-full flex-shrink-0"
-          style={{ background: "var(--notification)" }}
-        />
       )}
     </div>
   );
@@ -83,7 +100,7 @@ function LoadingDots() {
   );
 }
 
-function EmptyState({ isDark }) {
+function EmptyState({ isDark, onCreateRoomClick }) {
   return (
     <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
       <div
@@ -92,16 +109,149 @@ function EmptyState({ isDark }) {
           background: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)",
         }}
       >
-        <FiSearch size={24} style={{ color: "var(--text-muted)" }} />
+        <FiPlus size={24} style={{ color: "var(--text-muted)" }} />
       </div>
       <div
         className="text-sm font-medium mb-1"
         style={{ color: "var(--text-primary)" }}
       >
-        Không tìm thấy room nào
+        Chưa có room nào
       </div>
-      <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-        Thử tìm kiếm với từ khóa khác nhé
+      <div className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
+        Tạo room đầu tiên để bắt đầu thảo luận
+      </div>
+      <button
+        onClick={onCreateRoomClick}
+        className="px-4 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer"
+        style={{
+          background: "var(--primary)",
+          color: "#fff",
+        }}
+      >
+        Tạo room mới
+      </button>
+    </div>
+  );
+}
+
+function CreateRoomModal({ isOpen, onClose, onCreate, isDark }) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [isPrivate, setIsPrivate] = useState(false);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (name.trim()) {
+      onCreate({
+        name: name.trim(),
+        description: description.trim(),
+        isPrivate,
+      });
+      setName("");
+      setDescription("");
+      setIsPrivate(false);
+      onClose();
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div
+        className="w-full max-w-md rounded-lg p-6 shadow-xl"
+        style={{
+          background: "var(--bg-surface-secondary)",
+          border: "1px solid var(--border-primary)",
+        }}
+      >
+        <h2
+          className="text-lg font-semibold mb-4"
+          style={{ color: "var(--text-primary)" }}
+        >
+          Tạo Room mới
+        </h2>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label
+              className="block text-sm font-medium mb-1"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              Tên room
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="VD: Thảo luận, Tài liệu..."
+              className="w-full px-3 py-2 rounded-md text-sm border outline-none"
+              style={{
+                background: "var(--input-bg)",
+                borderColor: "var(--input-border)",
+                color: "var(--input-text)",
+              }}
+              autoFocus
+            />
+          </div>
+          <div>
+            <label
+              className="block text-sm font-medium mb-1"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              Mô tả (tùy chọn)
+            </label>
+            <input
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Mô tả ngắn về room..."
+              className="w-full px-3 py-2 rounded-md text-sm border outline-none"
+              style={{
+                background: "var(--input-bg)",
+                borderColor: "var(--input-border)",
+                color: "var(--input-text)",
+              }}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="isPrivate"
+              checked={isPrivate}
+              onChange={(e) => setIsPrivate(e.target.checked)}
+              className="w-4 h-4 cursor-pointer"
+              style={{ accentColor: "var(--primary)" }}
+            />
+            <label
+              htmlFor="isPrivate"
+              className="text-sm cursor-pointer"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              Room riêng tư
+            </label>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-md text-sm font-medium"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              Hủy
+            </button>
+            <button
+              type="submit"
+              disabled={!name.trim()}
+              className="px-4 py-2 rounded-md text-sm font-medium disabled:opacity-50"
+              style={{
+                background: "var(--primary)",
+                color: isDark ? "var(--bg-surface)" : "#fff",
+              }}
+            >
+              Tạo
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -116,9 +266,31 @@ function SpaceRoomList({
   onCreateRoomClick,
 }) {
   const { isDark } = useSelector((state) => state.theme);
+  const dispatch = useDispatch();
   const [isSearching, setIsSearching] = useState(false);
 
-  const spaceRooms = rooms[activeSpace] || [];
+  const { spaces, roomsMap, roomsLoading, fetchedRooms } = useSelector(
+    (state) => state.space,
+  );
+  const currentUser = useSelector((state) => state.auth.user);
+
+  const spaceRooms = roomsMap[activeSpace] || [];
+  const isFetched = fetchedRooms[activeSpace];
+
+  // Helper to format last message from API
+  const getRoomLastMessage = (room) => {
+    const lastMsg = room.last_message;
+    if (!lastMsg) return null;
+    const isOwn = lastMsg.sender_id && currentUser?.id && String(lastMsg.sender_id) === String(currentUser.id);
+    const senderName = isOwn ? "Bạn" : (lastMsg.sender_display_name || lastMsg.username || "Unknown");
+    return {
+      content: lastMsg.content,
+      senderName,
+    };
+  };
+
+  // Rooms are already fetched globally in App.jsx
+  // This component only reads from Redux store, no need to fetch here
 
   const filteredRooms = spaceRooms.filter((room) =>
     room.name.toLowerCase().includes(searchQuery.toLowerCase()),
@@ -133,6 +305,14 @@ function SpaceRoomList({
       setIsSearching(false);
     }
   };
+
+  const handleCreateRoom = (roomData) => {
+    if (activeSpace) {
+      dispatch(createRoom({ spaceId: activeSpace, data: roomData }));
+    }
+  };
+
+  const currentSpace = spaces.find((s) => s.id === activeSpace);
 
   return (
     <div
@@ -149,10 +329,10 @@ function SpaceRoomList({
       >
         <div className="flex items-center justify-between mb-3">
           <div
-            className="text-base font-semibold"
+            className="text-base font-semibold truncate"
             style={{ color: "var(--text-primary)" }}
           >
-            {spaces.find((s) => s.id === activeSpace)?.name || "Space"}
+            {currentSpace?.name || "Space"}
           </div>
           <button
             onClick={() => console.log("Space settings clicked")}
@@ -186,46 +366,53 @@ function SpaceRoomList({
 
       {/* Room list */}
       <div className="flex-1 overflow-y-auto p-2">
-        {isSearching && <LoadingDots />}
+        {/* Header with create button — always visible */}
+        <div className="flex items-center justify-between px-3 py-2">
+          <div
+            className="text-xs font-medium uppercase tracking-wider"
+            style={{ color: "var(--text-muted)" }}
+          >
+            Rooms
+          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onCreateRoomClick) onCreateRoomClick();
+            }}
+            className="p-1 rounded hover:opacity-70 transition-opacity cursor-pointer"
+            style={{ color: "var(--text-muted)" }}
+            title="Tạo room mới"
+          >
+            <FiPlus size={14} />
+          </button>
+        </div>
 
-        {!isSearching && filteredRooms.length === 0 && (
-          <EmptyState isDark={isDark} />
+        {(roomsLoading || isSearching) && <LoadingDots />}
+
+        {!roomsLoading && !isSearching && filteredRooms.length === 0 && (
+          <EmptyState isDark={isDark} onCreateRoomClick={onCreateRoomClick} />
         )}
 
         {!isSearching && filteredRooms.length > 0 && (
           <div>
-            <div
-              className="flex items-center justify-between px-3 py-2"
-            >
-              <div
-                className="text-xs font-medium uppercase tracking-wider"
-                style={{ color: "var(--text-muted)" }}
-              >
-                Rooms
-              </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (onCreateRoomClick) onCreateRoomClick();
-                }}
-                className="p-1 rounded hover:opacity-70 transition-opacity cursor-pointer"
-                style={{ color: "var(--text-muted)" }}
-                title="Tạo room mới"
-              >
-                <FiPlus size={14} />
-              </button>
-            </div>
-            {filteredRooms.map((room) => (
-              <RoomItem
-                key={room.id}
-                room={room}
-                isActive={activeRoom === room.id}
-                onClick={() => setActiveRoom(room.id)}
-              />
-            ))}
+            {filteredRooms.map((room) => {
+              const lastMsg = getRoomLastMessage(room);
+              return (
+                <RoomItem
+                  key={room.id}
+                  room={room}
+                  isActive={activeRoom === room.id}
+                  onClick={() => setActiveRoom(room.id)}
+                  lastMessage={lastMsg ? `${lastMsg.senderName}: ${lastMsg.content}` : null}
+                  unreadCount={room.unreadCount || 0}
+                />
+              );
+            })}
           </div>
         )}
       </div>
+
+
     </div>
   );
 }

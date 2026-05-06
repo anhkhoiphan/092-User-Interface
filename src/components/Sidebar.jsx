@@ -1,5 +1,5 @@
+import { useEffect, useRef } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import { spaces } from "../data/mockData";
 import MessagesButton from "./sidebar/MessagesButton";
 import SpaceIcon from "./sidebar/SpaceIcon";
 import {
@@ -9,7 +9,7 @@ import {
   openSettings,
   closeSettings,
 } from "../store/slices/appSlice";
-import { toggleTheme } from "../store/slices/themeSlice";
+
 
 function Sidebar() {
   const dispatch = useDispatch();
@@ -17,8 +17,13 @@ function Sidebar() {
   const { activeView, activeSpace, isSettings } = appState;
   const { isDark } = useSelector((state) => state.theme);
   const { totalUnreadCount } = useSelector((state) => state.dm);
-
+  const { spaces, loading: spacesLoading, spacesFetched } = useSelector(
+    (state) => state.space,
+  );
+  const { isAuthenticated } = useSelector((state) => state.auth);
   const currentView = isSettings ? "settings" : activeView;
+
+  console.log("[Sidebar] Render - spaces count:", spaces.length, "spacesLoading:", spacesLoading, "spaces:", spaces.map(s => ({ id: s.id, name: s.name })));
 
   return (
     <div
@@ -37,14 +42,18 @@ function Sidebar() {
           <SpaceIcon
             key={space.id}
             icon={space.icon}
+            name={space.name}
             isActive={currentView === "space" && activeSpace === space.id}
-            hasNotification={space.hasNotification}
+            hasNotification={space.hasNotification || false}
             onClick={() => {
               dispatch(navigateToSpace(space.id));
             }}
             title={space.name}
           />
         ))}
+        {spacesLoading && (
+          <div className="w-10 h-10 rounded-lg animate-pulse" style={{ background: "var(--hover-primary)" }} />
+        )}
         <SpaceIcon
           icon="plus"
           isActive={currentView === "createSpace"}

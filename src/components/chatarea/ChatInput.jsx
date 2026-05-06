@@ -3,8 +3,8 @@ import { FiX, FiPaperclip } from "react-icons/fi";
 import { IoSend } from "react-icons/io5";
 import MentionSuggestions from "./MentionSuggestions";
 import FileAttachmentPreview from "./FileAttachmentPreview";
-import { dmUsers } from "../../data/mockData";
 import { getUserColor } from "../../utils/userColor";
+import { useSelector } from "react-redux";
 
 // Allowed file types
 const ALLOWED_FILE_TYPES = [
@@ -39,6 +39,38 @@ function ChatInput({
   const editorRef = useRef(null);
   const containerRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  // Get real users from Redux for mentions
+  const { conversations } = useSelector((state) => state.dm);
+  const { membersMap } = useSelector((state) => state.space);
+
+  const allUsers = (() => {
+    const users = [];
+    const seenIds = new Set();
+
+    conversations.forEach((conv) => {
+      const ou = conv.other_user;
+      if (ou && !seenIds.has(ou.id)) {
+        seenIds.add(ou.id);
+        users.push({
+          id: ou.id,
+          name: ou.display_name || ou.name || "Unknown",
+        });
+      }
+    });
+
+    Object.values(membersMap).flat().forEach((member) => {
+      if (member && !seenIds.has(member.id)) {
+        seenIds.add(member.id);
+        users.push({
+          id: member.id,
+          name: member.display_name || member.name || member.email || "Unknown",
+        });
+      }
+    });
+
+    return users;
+  })();
 
   const placeholderText = placeholder;
 
@@ -117,15 +149,14 @@ function ChatInput({
     const beforeText = plainText.substring(0, atPosition);
     const afterText = plainText.substring(cursorOffset);
 
-    const mentionColor = user.isAgent ? "var(--tertiary)" : getUserColor(user.name);
+    const mentionColor = getUserColor(user.name);
     const mentionSpan = document.createElement("span");
     mentionSpan.className = "mention-tag";
     mentionSpan.contentEditable = "false";
     mentionSpan.style.cssText = `color: ${mentionColor}; font-weight: 600; cursor: pointer;`;
-    mentionSpan.textContent = "@agent";
-    mentionSpan.dataset.userId = "agent";
-    mentionSpan.dataset.userName = "agent";
-    mentionSpan.dataset.isAgent = user.isAgent ? "true" : "false";
+    mentionSpan.textContent = `@${user.name}`;
+    mentionSpan.dataset.userId = user.id;
+    mentionSpan.dataset.userName = user.name;
 
     // Rebuild editor content
     editorRef.current.innerHTML = "";
@@ -144,7 +175,7 @@ function ChatInput({
       editorRef.current.appendChild(document.createTextNode(afterText));
     }
 
-    setMentions((prev) => [...prev, { id: "agent", name: "agent", isAgent: user.isAgent }]);
+    setMentions((prev) => [...prev, { id: user.id, name: user.name }]);
 
     // Focus editor and set cursor after the zero-width space + space
     editorRef.current.focus();
@@ -180,7 +211,8 @@ function ChatInput({
   // Handle file selection
   const handleFileSelect = (e) => {
     const files = Array.from(e.target.files);
-    const validFiles = [];
+    const imageFiles = [];
+    const nonImageFiles = [];
 
     files.forEach((file) => {
       // Check file type
@@ -197,31 +229,48 @@ function ChatInput({
         return;
       }
 
-      // Create preview for images
+      // Separate images (async) from non-images (sync)
       if (file.type.startsWith("image/")) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          validFiles.push({
-            file,
-            name: file.name,
-            type: file.type,
-            size: file.size,
-            preview: e.target.result,
-          });
-          setSelectedFiles((prev) => [...prev, validFiles.pop()]);
-        };
-        reader.readAsDataURL(file);
+        imageFiles.push(file);
       } else {
-        validFiles.push({
+        nonImageFiles.push({
           file,
           name: file.name,
           type: file.type,
           size: file.size,
           preview: null,
         });
-        setSelectedFiles((prev) => [...prev, validFiles.pop()]);
       }
     });
+
+    // Add non-image files immediately
+    if (nonImageFiles.length > 0) {
+      setSelectedFiles((prev) => [...prev, ...nonImageFiles]);
+    }
+
+    // Process images asynchronously with Promise.all
+    if (imageFiles.length > 0) {
+      Promise.all(
+        imageFiles.map(
+          (file) =>
+            new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onload = (e) => {
+                resolve({
+                  file,
+                  name: file.name,
+                  type: file.type,
+                  size: file.size,
+                  preview: e.target.result,
+                });
+              };
+              reader.readAsDataURL(file);
+            }),
+        ),
+      ).then((imageResults) => {
+        setSelectedFiles((prev) => [...prev, ...imageResults]);
+      });
+    }
 
     // Reset file input
     if (fileInputRef.current) {
@@ -243,7 +292,7 @@ function ChatInput({
 
   const handleKeyDown = (e) => {
     if (showMentions) {
-      const filteredUsers = dmUsers.filter((user) =>
+      const filteredUsers = allUsers.filter((user) =>
         user.name.toLowerCase().includes(mentionFilter.toLowerCase()),
       );
 
@@ -317,7 +366,7 @@ function ChatInput({
           const lastAtPos = textBeforeSpace.lastIndexOf("@");
           if (lastAtPos >= 0) {
             const potentialMention = textBeforeSpace.substring(lastAtPos);
-            const mentionedUser = dmUsers.find(
+            const mentionedUser = allUsers.find(
               (u) =>
                 `@${u.name} ` === potentialMention ||
                 `@${u.name}` === potentialMention,
