@@ -13,6 +13,7 @@ import CreateAgentTips from "./components/createspace/CreateAgentTips";
 import ManageAgent from "./components/createspace/ManageAgent";
 import ManageAgentTips from "./components/createspace/ManageAgentTips";
 import LoginPage from "./pages/LoginPage";
+import TADashboard from "./pages/TADashboard";
 import AppLoadingScreen from "./components/AppLoadingScreen";
 import { initializeAuth } from "./store/slices/authSlice";
 import {
@@ -345,6 +346,10 @@ function App() {
           />
           {renderCreateContent()}
           {renderCreateTips()}
+        </>
+      ) : currentView === "dashboard" ? (
+        <>
+          <TADashboard />
         </>
       ) : (
         <>

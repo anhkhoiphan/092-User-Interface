@@ -8,7 +8,9 @@ import {
   openCreateSpace,
   openSettings,
   closeSettings,
+  navigateToDashboard,
 } from "../store/slices/appSlice";
+import { FiBarChart2 } from "react-icons/fi";
 
 
 function Sidebar() {
@@ -20,7 +22,7 @@ function Sidebar() {
   const { spaces, loading: spacesLoading, spacesFetched } = useSelector(
     (state) => state.space,
   );
-  const { isAuthenticated } = useSelector((state) => state.auth);
+  const { isAuthenticated, user } = useSelector((state) => state.auth);
   const currentView = isSettings ? "settings" : activeView;
 
   console.log("[Sidebar] Render - spaces count:", spaces.length, "spacesLoading:", spacesLoading, "spaces:", spaces.map(s => ({ id: s.id, name: s.name })));
@@ -65,6 +67,15 @@ function Sidebar() {
         />
       </div>
       <div className="flex flex-col items-center gap-2">
+        {user && activeSpace && spaces.find(s => s.id === activeSpace)?.owner_id === user.id && (activeView === "space" || activeView === "dashboard") && (
+          <SpaceIcon
+            icon="dashboard"
+            isActive={currentView === "dashboard"}
+            hasNotification={false}
+            onClick={() => dispatch(navigateToDashboard())}
+            title="TA Dashboard"
+          />
+        )}
         <SpaceIcon
           icon="settings"
           isActive={currentView === "settings"}

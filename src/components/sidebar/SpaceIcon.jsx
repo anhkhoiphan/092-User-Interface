@@ -1,10 +1,11 @@
-import { FiPlus, FiSettings } from "react-icons/fi";
+import { FiPlus, FiSettings, FiBarChart2 } from "react-icons/fi";
 import { getSpaceIconComponent } from "../../constants/spaceIcons";
 
 // Built-in system icons (not from space registry)
 const systemIcons = {
   plus: FiPlus,
   settings: FiSettings,
+  dashboard: FiBarChart2,
 };
 
 function SpaceIcon({ icon, name, isActive, hasNotification, onClick, title }) {

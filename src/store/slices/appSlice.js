@@ -54,6 +54,10 @@ const appSlice = createSlice({
     cancelCreateSpace: (state) => {
       state.activeView = "space";
     },
+    navigateToDashboard: (state) => {
+      state.activeView = "dashboard";
+      state.isSettings = false;
+    },
     // 🆕 App loading state reducers
     setAppLoading: (state, action) => {
       state.appLoading = action.payload;
@@ -84,6 +88,7 @@ export const {
   navigateToMessages,
   openCreateSpace,
   cancelCreateSpace,
+  navigateToDashboard,
   // 🆕 App loading exports
   setAppLoading,
   setAppLoadingPhase,
