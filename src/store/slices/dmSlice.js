@@ -358,11 +358,12 @@ const dmSlice = createSlice({
     },
 
     setTyping: (state, action) => {
-      const { conversationId, userId, isTyping } = action.payload;
+      const { conversationId, userId, isTyping, isBot } = action.payload;
       if (isTyping) {
         state.typing[conversationId] = {
           userId,
           isTyping,
+          isBot,
           timestamp: Date.now(),
         };
       } else {

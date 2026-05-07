@@ -425,7 +425,7 @@ function ChatInput({
       {typingSender && (
         <div className="absolute top-[-28px] left-0 flex items-center gap-2 px-4 pt-2 pb-1">
           <span className="text-xs italic" style={{ color: "var(--primary)" }}>
-            {typingSender} đang nhập
+            {typingSender === 'StudyBot' ? `${typingSender} đang suy nghĩ...` : `${typingSender} đang nhập`}
           </span>
           <span className="flex gap-0.5">
             <span
