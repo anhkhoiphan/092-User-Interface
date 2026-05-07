@@ -125,6 +125,24 @@ export const preloadAllData = createAsyncThunk(
         socketService.joinDM(conv.id);
       });
 
+      // ─── Phase 3: Join all Space rooms via WebSocket ───
+      const allRoomIds = [];
+      spaces.forEach((space) => {
+        if (space.rooms && Array.isArray(space.rooms)) {
+          space.rooms.forEach((room) => {
+            if (room.id) {
+              allRoomIds.push(room.id);
+            }
+          });
+        }
+      });
+      allRoomIds.forEach((roomId) => {
+        socketService.joinRoom(roomId).catch((err) => {
+          console.warn("[preloadAllData] Failed to join room:", roomId, err);
+        });
+      });
+      console.log(`[preloadAllData] Joined ${allRoomIds.length} space rooms via WebSocket`);
+
       const elapsed = Math.round(performance.now() - preloadStart);
       console.log(`%c[preloadAllData] << Hoàn tất preload trong ${elapsed}ms`, "color: #8b5cf6; font-weight: bold; font-size: 13px;", {
         conversations: convList.length,

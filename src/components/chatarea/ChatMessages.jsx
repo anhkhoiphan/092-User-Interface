@@ -238,7 +238,7 @@ function MessageSkeleton({ isDark, width = "75%", showSecondLine = true }) {
   );
 }
 
-function EmptyChatState({ dmUser, isDark, hasNoSelection }) {
+function EmptyChatState({ dmUser, isDark, hasNoSelection, spaceWelcome }) {
   return (
     <div className="flex flex-col items-center justify-center px-6 text-center">
       <div
@@ -265,21 +265,25 @@ function EmptyChatState({ dmUser, isDark, hasNoSelection }) {
         className="text-base font-semibold mb-2"
         style={{ color: "var(--text-primary)" }}
       >
-        {hasNoSelection
-          ? "Chọn một cuộc trò chuyện"
-          : dmUser
-            ? `Bắt đầu trò chuyện với ${dmUser.name}`
-            : "Chưa có tin nhắn nào"}
+        {spaceWelcome
+          ? spaceWelcome.title
+          : hasNoSelection
+            ? "Chọn một cuộc trò chuyện"
+            : dmUser
+              ? `Bắt đầu trò chuyện với ${dmUser.name}`
+              : "Chưa có tin nhắn nào"}
       </div>
       <div
         className="text-sm leading-relaxed max-w-xs"
         style={{ color: "var(--text-muted)" }}
       >
-        {hasNoSelection
-          ? "Hãy chọn một ngườii bạn bên trái để bắt đầu nhắn tin."
-          : dmUser
-            ? "Hãy gửi lờii chào hoặc câu hỏi để bắt đầu cuộc trò chuyện đầu tiên nhé!"
-            : "Chọn một cuộc trò chuyện để bắt đầu nhắn tin."}
+        {spaceWelcome
+          ? spaceWelcome.description
+          : hasNoSelection
+            ? "Hãy chọn một ngườii bạn bên trái để bắt đầu nhắn tin."
+            : dmUser
+              ? "Hãy gửi lờii chào hoặc câu hỏi để bắt đầu cuộc trò chuyện đầu tiên nhé!"
+              : "Chọn một cuộc trò chuyện để bắt đầu nhắn tin."}
       </div>
     </div>
   );
@@ -293,6 +297,8 @@ function ChatMessages({
   onEdit,
   onShowProfile,
   hasNoSelection,
+  spaceWelcome,
+  isKnownEmpty,
   sendingMessages,
   isLoading,
   conversationId,
@@ -413,15 +419,15 @@ function ChatMessages({
 
   const hasMessages = chatMessages.length > 0;
 
-  const isEmpty = !hasMessages && !isLoading;
+  const isEmpty = !hasMessages && (!isLoading || isKnownEmpty);
 
   return (
     <div
       ref={messagesContainerRef}
-      className={`flex-1 p-4 ${isEmpty ? "flex items-center justify-center overflow-hidden" : ` ${isLoading ? "overflow-hidden" : "overflow-y-auto"}`}`}
+      className={`flex-1 p-4 ${isEmpty ? "flex items-center justify-center overflow-hidden" : ` ${isLoading && !isKnownEmpty ? "overflow-hidden" : "overflow-y-auto"}`}`}
       onScroll={isEmpty ? undefined : handleScroll}
     >
-      {isLoading && !hasMessages ? (
+      {isLoading && !hasMessages && !isKnownEmpty ? (
         <div className="flex flex-col gap-2 w-full min-h-full justify-end pb-2">
           <MessageSkeleton isDark={isDark} width="60%" showSecondLine={false} />
           <MessageSkeleton isDark={isDark} width="85%" />
@@ -438,6 +444,7 @@ function ChatMessages({
           dmUser={dmUser}
           isDark={isDark}
           hasNoSelection={hasNoSelection}
+          spaceWelcome={spaceWelcome}
         />
       ) : (
         <div className="flex flex-col min-h-full justify-end gap-1 w-full">

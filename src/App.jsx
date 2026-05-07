@@ -27,6 +27,11 @@ import {
   preloadAllData,
 } from "./store/slices/dmSlice";
 import { addMessage } from "./store/slices/messageSlice";
+import {
+  updateRoomLastMessage,
+  incrementRoomUnreadCount,
+  addJoinedRoom,
+} from "./store/slices/spaceSlice";
 import socketService from "./services/socket.service";
 
 function App() {
@@ -233,10 +238,17 @@ function App() {
       const senderId = data.user_id || data.senderId;
       const id = data.id;
       const tempId = data.tempId;
-      
+
       if (!roomId || !content) return;
-      
+
       console.log("[App] newMessage parsed:", { roomId, id, tempId, author, senderId });
+
+      const state = store.getState();
+      const currentActiveRoom = state.app.activeRoom;
+      const currentUserId = state.auth.user?.id;
+      const isOwnMessage = String(senderId) === String(currentUserId);
+
+      // 1. Save message to Redux
       dispatch(
         addMessage({
           roomId,
@@ -251,11 +263,30 @@ function App() {
             content,
             created_at: data.created_at || new Date().toISOString(),
             isPinned: data.is_pinned || false,
-            isOwn: String(senderId) === String(store.getState().auth.user?.id),
+            isOwn: isOwnMessage,
             tempId,
           },
         }),
       );
+
+      // 2. Update room's last_message in spaceSlice (for RoomList display)
+      dispatch(
+        updateRoomLastMessage({
+          roomId,
+          message: {
+            id: id || Date.now(),
+            content,
+            created_at: data.created_at || new Date().toISOString(),
+            sender_id: senderId,
+            sender: author,
+          },
+        }),
+      );
+
+      // 3. Increment unread count if not viewing this room and not own message
+      if (roomId !== currentActiveRoom && !isOwnMessage) {
+        dispatch(incrementRoomUnreadCount({ roomId }));
+      }
     };
 
     socketService.onConnected(handleConnected);

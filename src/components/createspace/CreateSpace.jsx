@@ -1,50 +1,11 @@
 import { useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import {
-  PiGraduationCap,
-  PiRobot,
-  PiFolder,
-  PiPencil,
-  PiComputerTower,
-  PiBooks,
-  PiStudent,
-  PiFlask,
-  PiCode,
-  PiGlobe,
-  PiMusicNotes,
-  PiPalette,
-  PiCamera,
-  PiGameController,
-  PiHeart,
-  PiStar,
-  PiRocket,
-  PiBrain,
-  PiCalculator,
-  PiCalendar,
-  PiUsers,
-  PiTrophy,
-  PiFlag,
-  PiSun,
-  PiMoon,
-  PiCloud,
-  PiHouse,
-  PiCar,
-  PiAirplane,
-  PiBasketball,
-  PiGuitar,
-  PiPhone,
-  PiLaptop,
-  PiCoffee,
-  PiPizza,
-  PiFirstAid,
-  PiLockKey,
-  PiMoney,
-  PiGift,
-  PiFire,
-  PiSnowflake,
-} from "react-icons/pi";
+import { PiGraduationCap } from "react-icons/pi";
 import { FiSearch, FiX } from "react-icons/fi";
-import { cancelCreateSpace, navigateToSpace } from "../../store/slices/appSlice";
+import {
+  cancelCreateSpace,
+  navigateToSpace,
+} from "../../store/slices/appSlice";
 import { createSpace } from "../../store/slices/spaceSlice";
 import { dmService } from "../../services/dm.service";
 import { spaceIcons, getSpaceIconComponent } from "../../constants/spaceIcons";
@@ -55,7 +16,7 @@ function CreateSpace() {
   const [spaceName, setSpaceName] = useState("");
   const [spaceIcon, setSpaceIcon] = useState(spaceIcons[0].id);
   const [spaceDescription, setSpaceDescription] = useState("");
-  
+
   // Members state
   const [members, setMembers] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -66,7 +27,7 @@ function CreateSpace() {
   // Search users - only trigger on Enter key
   const handleSearch = async (query) => {
     setSearchQuery(query);
-    
+
     if (!query.trim()) {
       setSearchResults([]);
       setIsSearching(false);
@@ -75,15 +36,15 @@ function CreateSpace() {
   };
 
   const handleSearchKeyDown = async (e) => {
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       e.preventDefault();
       const query = searchQuery.trim();
-      
+
       if (!query) {
         setSearchResults([]);
         return;
       }
-      
+
       setIsSearching(true);
       try {
         const { data } = await dmService.searchUsers(query);
@@ -131,9 +92,8 @@ function CreateSpace() {
       if (spaceDescription.trim()) {
         payload.description = spaceDescription.trim();
       }
-      // Gửi icon nếu BE hỗ trợ (URL string theo API doc)
-      // Nếu BE chưa hỗ trợ, có thể bỏ qua hoặc comment dòng dưới
-      // payload.icon = spaceIcon;
+      // Gửi icon id (theo spaceIcons id) lên BE
+      payload.icon = spaceIcon;
 
       // Gửi memberIds nếu có members được chọn
       if (members.length > 0) {
@@ -299,18 +259,27 @@ function CreateSpace() {
             >
               Thêm thành viên
             </h3>
-            
+
             {/* Search input */}
             <div className="relative mb-3">
               {isSearching ? (
                 <div className="absolute left-3 top-1/2 -translate-y-1/2">
-                  <div className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"
-                    style={{ borderColor: "var(--text-muted)", borderTopColor: "transparent" }}
+                  <div
+                    className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"
+                    style={{
+                      borderColor: "var(--text-muted)",
+                      borderTopColor: "transparent",
+                    }}
                   />
                 </div>
               ) : (
                 <button
-                  onClick={() => handleSearchKeyDown({ key: 'Enter', preventDefault: () => {} })}
+                  onClick={() =>
+                    handleSearchKeyDown({
+                      key: "Enter",
+                      preventDefault: () => {},
+                    })
+                  }
                   className="absolute left-3 top-1/2 -translate-y-1/2 hover:opacity-70 transition-opacity"
                   style={{ color: "var(--text-muted)" }}
                 >
@@ -337,7 +306,7 @@ function CreateSpace() {
                 }
               />
             </div>
-            
+
             {/* Selected members - chips */}
             {members.length > 0 && (
               <div className="mb-3">
@@ -378,7 +347,7 @@ function CreateSpace() {
                 </div>
               </div>
             )}
-            
+
             {/* Search results with checkbox - keep showing after select */}
             {searchResults.length > 0 && (
               <div>

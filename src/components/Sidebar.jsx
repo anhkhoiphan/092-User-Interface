@@ -41,7 +41,7 @@ function Sidebar() {
         {spaces.map((space) => (
           <SpaceIcon
             key={space.id}
-            icon={space.icon}
+            icon={space.icon_url}
             name={space.name}
             isActive={currentView === "space" && activeSpace === space.id}
             hasNotification={space.hasNotification || false}

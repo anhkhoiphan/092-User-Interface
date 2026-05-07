@@ -192,6 +192,11 @@ const initialState = {
   spacesFetched: false,
   fetchedRooms: {}, // { [spaceId]: boolean }
   fetchedMembers: {}, // { [spaceId]: boolean }
+  // 🆕 Room unread tracking (similar to DM)
+  roomUnreadCounts: {}, // { [roomId]: number }
+  roomTotalUnreadCount: 0,
+  // 🆕 Track joined rooms for WebSocket
+  joinedRooms: [], // Array<roomId>
 };
 
 const spaceSlice = createSlice({
@@ -259,6 +264,75 @@ const spaceSlice = createSlice({
     },
 
     resetSpaceState: () => initialState,
+
+    // 🆕 Update room's last_message and move to top of list
+    updateRoomLastMessage: (state, action) => {
+      const { roomId, message } = action.payload;
+      // Find the room in roomsMap
+      for (const spaceId of Object.keys(state.roomsMap)) {
+        const rooms = state.roomsMap[spaceId];
+        const idx = rooms.findIndex((r) => r.id === roomId);
+        if (idx !== -1) {
+          rooms[idx] = {
+            ...rooms[idx],
+            last_message: {
+              id: message.id,
+              content: message.content,
+              created_at: message.created_at,
+              sender_id: message.sender_id,
+              sender_display_name: message.sender?.display_name || message.sender?.name || "Unknown",
+            },
+          };
+          // Move room to top of the list (similar to DM conversation sort)
+          const room = rooms.splice(idx, 1)[0];
+          rooms.unshift(room);
+          break;
+        }
+      }
+    },
+
+    // 🆕 Increment unread count for a room
+    incrementRoomUnreadCount: (state, action) => {
+      const { roomId } = action.payload;
+      const current = state.roomUnreadCounts[roomId] || 0;
+      state.roomUnreadCounts[roomId] = current + 1;
+      state.roomTotalUnreadCount = Object.values(state.roomUnreadCounts).reduce(
+        (a, b) => a + b,
+        0,
+      );
+    },
+
+    // 🆕 Clear unread count for a room
+    clearRoomUnreadCount: (state, action) => {
+      const { roomId } = action.payload;
+      delete state.roomUnreadCounts[roomId];
+      state.roomTotalUnreadCount = Object.values(state.roomUnreadCounts).reduce(
+        (a, b) => a + b,
+        0,
+      );
+    },
+
+    // 🆕 Set unread count for a room
+    setRoomUnreadCount: (state, action) => {
+      const { roomId, count } = action.payload;
+      if (count <= 0) {
+        delete state.roomUnreadCounts[roomId];
+      } else {
+        state.roomUnreadCounts[roomId] = count;
+      }
+      state.roomTotalUnreadCount = Object.values(state.roomUnreadCounts).reduce(
+        (a, b) => a + b,
+        0,
+      );
+    },
+
+    // 🆕 Track joined rooms
+    addJoinedRoom: (state, action) => {
+      const roomId = action.payload;
+      if (!state.joinedRooms.includes(roomId)) {
+        state.joinedRooms.push(roomId);
+      }
+    },
 
     // Load spaces and rooms from localStorage cache
     loadSpacesFromCache: (state) => {
@@ -453,6 +527,12 @@ export const {
   resetSpaceState,
   loadSpacesFromCache,
   loadMembersFromCache,
+  // 🆕 Room unread tracking exports
+  updateRoomLastMessage,
+  incrementRoomUnreadCount,
+  clearRoomUnreadCount,
+  setRoomUnreadCount,
+  addJoinedRoom,
 } = spaceSlice.actions;
 
 export default spaceSlice.reducer;
