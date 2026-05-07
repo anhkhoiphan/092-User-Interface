@@ -82,7 +82,7 @@ function ChatArea({
     return null;
   })();
 
-  const isBotRoom = room === "tro-ly-ai";
+  const isBotRoom = room === "tro-ly-ai" || room === "studybot";
 
   // Check if current room is a space room (exists in roomsMap)
   const isSpaceRoom = room && !isBotRoom && Object.values(roomsMap).some(
@@ -90,10 +90,11 @@ function ChatArea({
   );
 
   // DM view: either explicit messages view, or a room that looks like a DM conversation
-  // (not a bot room and not a space room). DM conversations use UUID format.
+  // (not a space room). DM conversations use UUID format or bot room.
   const isDM =
     view === "messages" ||
-    (room && !isBotRoom && !isSpaceRoom && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(room));
+    isBotRoom ||
+    (room && !isSpaceRoom && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(room));
 
   // Move useSelector hooks to top (was at line 281)
   const { messages: roomMessagesMap, messagesLoading: roomMessagesLoading, fetchedRooms } = useSelector((state) => state.message);
@@ -102,6 +103,21 @@ function ChatArea({
   useEffect(() => {
     if (!isDM || !room) {
       setDmUser(null);
+      return;
+    }
+
+    if (isBotRoom) {
+      setDmUser({
+        id: "studybot",
+        name: "StudyBot",
+        avatar: "🤖",
+        color: null,
+        isOnline: true,
+        isFriend: true,
+        email: "",
+        bio: "Trợ lý AI học tập",
+        isBot: true,
+      });
       return;
     }
 
@@ -147,7 +163,7 @@ function ChatArea({
         isBot: false,
       });
     }
-  }, [room, isDM, selectedDMUser, activeConversation, onlineUsers]);
+  }, [room, isDM, isBotRoom, selectedDMUser, activeConversation, onlineUsers]);
 
 
 
@@ -185,6 +201,16 @@ function ChatArea({
       dispatch(fetchMessages({ conversationId: activeConversationId, page: 1, limit: 50 }));
     }
   }, [isDM, activeConversationId, dispatch, fetchedConversations]);
+
+  // 🆕 Lazy load bot DM messages when opening bot conversation
+  useEffect(() => {
+    if (!isBotRoom || !room) return;
+
+    const isFetched = fetchedConversations[room];
+    if (!isFetched) {
+      dispatch(fetchMessages({ conversationId: room, page: 1, limit: 50 }));
+    }
+  }, [isBotRoom, room, dispatch, fetchedConversations]);
 
   // 🆕 Lazy load room messages when entering a room
   useEffect(() => {
@@ -350,7 +376,7 @@ function ChatArea({
 
   // Get raw messages based on view type
   const conversationId =
-    activeConversationId || (isDM && room && !isBotRoom ? room : null);
+    activeConversationId || (isDM && room ? room : null);
   const rawMessages = isDM
     ? (conversationId ? dmMessagesMap[conversationId] || [] : [])
     : (roomMessagesMap[room] || []);
@@ -488,6 +514,9 @@ function ChatArea({
     }
     if (isDM && activeConversation) {
       return activeConversation.last_message === null || activeConversation.last_message === undefined;
+    }
+    if (isBotRoom) {
+      return false; // Bot room: always fetch messages
     }
     return false;
   })();
