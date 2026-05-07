@@ -77,26 +77,27 @@ function ChatHeader({
   roomListCollapsed,
   memberListCollapsed,
   onOpenRoomSettings,
+  spaceWelcome,
 }) {
-  const hasNoSelection = isDM && !dmUser;
+  const hasNoSelection = (isDM && !dmUser) || spaceWelcome;
 
   const headerTitle = hasNoSelection
     ? "Tin nhắn"
     : isBotRoom
-        ? "Trợ lý AI"
-        : isDM && dmUser
-          ? dmUser.name
-          : roomName || `# ${activeRoom}`;
+      ? "Trợ lý AI"
+      : isDM && dmUser
+        ? dmUser.name
+        : roomName || (activeRoom ? `# ${activeRoom}` : "");
 
   const headerSubtitle = hasNoSelection
     ? "Chọn một cuộc trò chuyện để bắt đầu"
     : isBotRoom
-        ? "Hỏi đáp với trợ lý AI"
-        : isDM && dmUser
-          ? dmUser.isOnline
-            ? "Đang hoạt động"
-            : "Ngoại tuyến"
-          : roomDescription || "";
+      ? "Hỏi đáp với trợ lý AI"
+      : isDM && dmUser
+        ? dmUser.isOnline
+          ? "Đang hoạt động"
+          : "Ngoại tuyến"
+        : roomDescription || "";
 
   return (
     <div

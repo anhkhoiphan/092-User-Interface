@@ -3,8 +3,16 @@ import { useSelector, useDispatch } from "react-redux";
 import { FiSearch, FiPlus, FiSliders } from "react-icons/fi";
 import { createRoom } from "../../store/slices/spaceSlice";
 import { setActiveRoom } from "../../store/slices/appSlice";
+import { getSpaceIconComponent } from "../../constants/spaceIcons";
 
-function RoomItem({ room, isActive, onClick, lastMessage, lastMessageTime, unreadCount }) {
+function RoomItem({
+  room,
+  isActive,
+  onClick,
+  lastMessage,
+  lastMessageTime,
+  unreadCount,
+}) {
   const [isHovered, setIsHovered] = useState(false);
 
   return (
@@ -58,9 +66,8 @@ function RoomItem({ room, isActive, onClick, lastMessage, lastMessageTime, unrea
         <div
           className="text-xs mt-0.5 truncate"
           style={{
-            color: unreadCount > 0
-              ? "var(--text-primary)"
-              : "var(--text-secondary)",
+            color:
+              unreadCount > 0 ? "var(--text-primary)" : "var(--text-secondary)",
             fontWeight: unreadCount > 0 ? 500 : 400,
           }}
         >
@@ -269,9 +276,13 @@ function SpaceRoomList({
   const dispatch = useDispatch();
   const [isSearching, setIsSearching] = useState(false);
 
-  const { spaces, roomsMap, roomsLoading, fetchedRooms } = useSelector(
-    (state) => state.space,
-  );
+  const {
+    spaces,
+    roomsMap,
+    roomsLoading,
+    fetchedRooms,
+    roomUnreadCounts,
+  } = useSelector((state) => state.space);
   const currentUser = useSelector((state) => state.auth.user);
 
   const spaceRooms = roomsMap[activeSpace] || [];
@@ -281,8 +292,13 @@ function SpaceRoomList({
   const getRoomLastMessage = (room) => {
     const lastMsg = room.last_message;
     if (!lastMsg) return null;
-    const isOwn = lastMsg.sender_id && currentUser?.id && String(lastMsg.sender_id) === String(currentUser.id);
-    const senderName = isOwn ? "Bạn" : (lastMsg.sender_display_name || lastMsg.username || "Unknown");
+    const isOwn =
+      lastMsg.sender_id &&
+      currentUser?.id &&
+      String(lastMsg.sender_id) === String(currentUser.id);
+    const senderName = isOwn
+      ? "Bạn"
+      : lastMsg.sender_display_name || lastMsg.username || "Unknown";
     return {
       content: lastMsg.content,
       senderName,
@@ -328,11 +344,13 @@ function SpaceRoomList({
         style={{ borderColor: "var(--border-primary)" }}
       >
         <div className="flex items-center justify-between mb-3">
-          <div
-            className="text-base font-semibold truncate"
-            style={{ color: "var(--text-primary)" }}
-          >
-            {currentSpace?.name || "Space"}
+          <div className="flex items-center gap-2 min-w-0">
+            <div
+              className="text-base font-semibold truncate"
+              style={{ color: "var(--text-primary)" }}
+            >
+              {currentSpace?.name || "Space"}
+            </div>
           </div>
           <button
             onClick={() => console.log("Space settings clicked")}
@@ -403,16 +421,16 @@ function SpaceRoomList({
                   room={room}
                   isActive={activeRoom === room.id}
                   onClick={() => setActiveRoom(room.id)}
-                  lastMessage={lastMsg ? `${lastMsg.senderName}: ${lastMsg.content}` : null}
-                  unreadCount={room.unreadCount || 0}
+                  lastMessage={
+                    lastMsg ? `${lastMsg.senderName}: ${lastMsg.content}` : null
+                  }
+                  unreadCount={roomUnreadCounts[room.id] || 0}
                 />
               );
             })}
           </div>
         )}
       </div>
-
-
     </div>
   );
 }

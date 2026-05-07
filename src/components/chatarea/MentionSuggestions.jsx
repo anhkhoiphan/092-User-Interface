@@ -19,6 +19,15 @@ function MentionSuggestions({
     const users = [];
     const seenIds = new Set();
 
+    // Always add StudyBot at the top
+    users.push({
+      id: "studybot",
+      name: "StudyBot",
+      avatar: "🤖",
+      isBot: true,
+    });
+    seenIds.add("studybot");
+
     // Add users from DM conversations
     conversations.forEach((conv) => {
       const ou = conv.other_user;

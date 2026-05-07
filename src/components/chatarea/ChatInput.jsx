@@ -28,6 +28,7 @@ function ChatInput({
   onTyping,
   onStopTyping,
   typingSender,
+  disabled,
 }) {
   const [showMentions, setShowMentions] = useState(false);
   const [mentionFilter, setMentionFilter] = useState("");
@@ -47,6 +48,14 @@ function ChatInput({
   const allUsers = (() => {
     const users = [];
     const seenIds = new Set();
+
+    // Add StudyBot as a mentionable user
+    users.push({
+      id: "studybot",
+      name: "StudyBot",
+      isBot: true,
+    });
+    seenIds.add("studybot");
 
     conversations.forEach((conv) => {
       const ou = conv.other_user;
@@ -472,33 +481,33 @@ function ChatInput({
         )}
 
         <div
-          className="chat-input-wrapper border rounded-lg p-1 transition-colors relative"
+          className={`chat-input-wrapper border rounded-lg p-1 transition-colors relative ${disabled ? "opacity-50" : ""}`}
           style={{
             background: "var(--input-bg)",
             borderColor: "var(--input-border)",
           }}
           onFocus={(e) =>
-            (e.currentTarget.style.borderColor = "var(--primary)")
+            !disabled && (e.currentTarget.style.borderColor = "var(--primary)")
           }
           onBlur={(e) =>
-            (e.currentTarget.style.borderColor = "var(--input-border)")
+            !disabled && (e.currentTarget.style.borderColor = "var(--input-border)")
           }
         >
           <div className="flex items-center gap-2">
             <div
               className={`chat-input-placeholder ${isEmpty ? "" : "hidden"}`}
             >
-              {placeholderText}
+              {disabled ? "Chọn một cuộc trò chuyện để bắt đầu" : placeholderText}
             </div>
             <div
               ref={editorRef}
-              contentEditable
+              contentEditable={!disabled}
               className="flex-1 border-none bg-transparent px-3 py-2 text-sm outline-none font-sans min-h-9 max-h-32 overflow-y-auto relative z-10"
               style={{
                 color: "var(--input-text)",
               }}
-              onInput={handleInput}
-              onKeyDown={handleKeyDown}
+              onInput={disabled ? undefined : handleInput}
+              onKeyDown={disabled ? undefined : handleKeyDown}
               suppressContentEditableWarning
             />
             {/* Hidden file input */}
@@ -509,19 +518,21 @@ function ChatInput({
               multiple
               className="hidden"
               onChange={handleFileSelect}
+              disabled={disabled}
             />
             <button
               type="button"
-              className="w-9 h-9 border-none rounded-md cursor-pointer flex items-center justify-center transition-colors"
+              disabled={disabled}
+              className="w-9 h-9 border-none rounded-md cursor-pointer flex items-center justify-center transition-colors disabled:cursor-not-allowed"
               style={{
                 background: "transparent",
                 color: "var(--text-secondary)",
               }}
               onMouseEnter={(e) =>
-                (e.currentTarget.style.background = "var(--hover-primary)")
+                !disabled && (e.currentTarget.style.background = "var(--hover-primary)")
               }
               onMouseLeave={(e) =>
-                (e.currentTarget.style.background = "transparent")
+                !disabled && (e.currentTarget.style.background = "transparent")
               }
               onClick={handleAttachmentClick}
               title="Đính kèm file (PDF, hình ảnh)"
@@ -530,16 +541,17 @@ function ChatInput({
             </button>
             <button
               type="button"
-              className="w-9 h-9 border-none rounded-md cursor-pointer flex items-center justify-center transition-colors"
+              disabled={disabled}
+              className="w-9 h-9 border-none rounded-md cursor-pointer flex items-center justify-center transition-colors disabled:cursor-not-allowed"
               style={{
                 background: "var(--primary)",
                 color: isDark ? "var(--bg-surface)" : "#fff",
               }}
               onMouseEnter={(e) =>
-                (e.currentTarget.style.background = "var(--primary-hover)")
+                !disabled && (e.currentTarget.style.background = "var(--primary-hover)")
               }
               onMouseLeave={(e) =>
-                (e.currentTarget.style.background = "var(--primary)")
+                !disabled && (e.currentTarget.style.background = "var(--primary)")
               }
               onClick={handleSend}
               title="Gửi"
