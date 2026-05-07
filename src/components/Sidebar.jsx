@@ -40,6 +40,14 @@ function Sidebar() {
           }}
           unreadCount={totalUnreadCount}
         />
+        <SpaceIcon
+          icon="dashboard"
+          isActive={currentView === "dashboard"}
+          hasNotification={false}
+          onClick={() => dispatch(navigateToDashboard())}
+          title="TA Management Center"
+        />
+        <div className="w-8 h-[1px] my-1" style={{ background: "var(--border-primary)" }} />
         {spaces.map((space) => (
           <SpaceIcon
             key={space.id}
@@ -67,15 +75,6 @@ function Sidebar() {
         />
       </div>
       <div className="flex flex-col items-center gap-2">
-        {user && activeSpace && spaces.find(s => s.id === activeSpace)?.owner_id === user.id && (activeView === "space" || activeView === "dashboard") && (
-          <SpaceIcon
-            icon="dashboard"
-            isActive={currentView === "dashboard"}
-            hasNotification={false}
-            onClick={() => dispatch(navigateToDashboard())}
-            title="TA Dashboard"
-          />
-        )}
         <SpaceIcon
           icon="settings"
           isActive={currentView === "settings"}

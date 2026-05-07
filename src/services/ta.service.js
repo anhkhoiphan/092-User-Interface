@@ -69,6 +69,32 @@ const taService = {
     });
     return response.data;
   },
+
+  /**
+   * Đặt lịch gửi bản tóm tắt
+   */
+  scheduleSummary: async (draftId, spaceId, scheduledAt) => {
+    const response = await api.post(`/ta/summary-queue/${draftId}/schedule?spaceId=${spaceId}`, {
+      scheduled_at: scheduledAt
+    });
+    return response.data;
+  },
+
+  /**
+   * Hủy đặt lịch gửi
+   */
+  cancelSchedule: async (draftId, spaceId) => {
+    const response = await api.post(`/ta/summary-queue/${draftId}/cancel-schedule?spaceId=${spaceId}`);
+    return response.data;
+  },
+
+  /**
+   * Tạo bản thảo tóm tắt (Dùng cho AI Agent hoặc Mock)
+   */
+  createSummaryDraft: async (dto) => {
+    const response = await api.post('/ta/summary-queue/draft', dto);
+    return response.data;
+  }
 };
 
 export default taService;
