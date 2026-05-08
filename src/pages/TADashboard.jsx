@@ -103,6 +103,49 @@ const TADashboard = () => {
     }
   };
 
+  // Logic phân loại và lọc Alert thông minh theo đặc tả rút gọn
+  const getCategorizedAlerts = () => {
+    // Lấy danh sách đã xử lý từ localStorage để ẩn đi
+    const processedIds = JSON.parse(localStorage.getItem('ta_processed_snapshots') || '[]');
+    
+    const filtered = atRiskList.filter(item => {
+      // Ẩn nếu đã xử lý trong phiên này
+      if (processedIds.includes(item.id)) return false;
+      // Filter theo lớp học nếu có chọn lọc
+      if (selectedSpaceFilter !== 'all' && item.space_id !== selectedSpaceFilter) return false;
+      return true;
+    });
+
+    return filtered.map(item => {
+      const score = item.metadata?.score || 0;
+      const signals = item.metadata?.signals || [];
+      const signalsCount = signals.length;
+
+      let displayLevel = 'warning';
+      let color = 'var(--ta-warning)';
+
+      if (score >= 7 || (score >= 5 && signalsCount >= 2)) {
+        displayLevel = 'critical';
+        color = 'var(--ta-critical)';
+      } else if (score >= 5) {
+        displayLevel = 'high';
+        color = 'var(--ta-high)';
+      }
+
+      return { ...item, displayLevel, color };
+    }).sort((a, b) => (b.metadata?.score || 0) - (a.metadata?.score || 0));
+  };
+
+  const markAsProcessed = (snapshotId) => {
+    const processedIds = JSON.parse(localStorage.getItem('ta_processed_snapshots') || '[]');
+    if (!processedIds.includes(snapshotId)) {
+      processedIds.push(snapshotId);
+      localStorage.setItem('ta_processed_snapshots', JSON.stringify(processedIds));
+    }
+    // Update local state to trigger re-render
+    setAtRiskList(prev => prev.filter(item => item.id !== snapshotId));
+  };
+
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 60000);
@@ -120,8 +163,11 @@ const TADashboard = () => {
     setUploading(true);
     try {
       const res = await taService.uploadSlide(selectedSpaceFilter, file);
-      if (res.success) setUploadedFile(res.data);
-      else alert('❌ Tải lên thất bại.');
+      if (res.success) {
+        setUploadedFile({ ...res.data, rawFile: file });
+      } else {
+        alert('❌ Tải lên thất bại.');
+      }
     } catch (error) {
       alert('❌ Lỗi kết nối server.');
     } finally {
@@ -129,79 +175,119 @@ const TADashboard = () => {
     }
   };
 
-  const startAiAnalysis = () => {
-    setCurrentStep(2);
-    setTimeout(async () => {
-      const mockContent = `### Tóm tắt buổi học hôm nay\n\n1. **React Hooks nâng cao**: Tìm hiểu useMemo và useCallback để tối ưu re-render.\n2. **Performance Audit**: Cách sử dụng Profiler trong React DevTools.\n3. **Atomic Design**: Phân rã Component thành các phần tử nguyên tử.\n\n📌 **Bài tập**: Hoàn thiện Dashboard cho dự án cá nhân và nộp trước 23h ngày mai.`;
-      const mockMetadata = {
-        decisions: [
-          { content: "Thống nhất sử dụng Atomic Design cho dự án cuối khóa." },
-          { content: "Dời lịch nộp bài tập sang thứ 4 tuần sau." }
-        ],
-        tasks: [
-          { task: "Hoàn thiện UI Dashboard", assignee: "Quang" },
-          { task: "Cài đặt Redis cho Backend", assignee: "Hoàng" }
-        ]
-      };
+  const startAiAnalysis = async () => {
+    if (selectedSpaceFilter === 'all') {
+      alert('⚠️ Vui lòng chọn một lớp học cụ thể để AI có thể phân tích dữ liệu.');
+      return;
+    }
 
-      try {
-        // Lưu bản thảo vào DB để có ID thật
+    setCurrentStep(2);
+    try {
+      let agentResponse;
+      const senderId = user?.display_name || user?.id || 'TA';
+      const query = `Hãy đóng vai một Trợ giảng (TA) nhiệt huyết và chuyên nghiệp. Dựa trên nội dung buổi học, hãy soạn một bản Recap gửi cho các bạn học viên với cấu trúc sau:
+1. Lời chào: Thân thiện, truyền cảm hứng (VD: 'Chào các bạn, buổi học hôm nay thực sự bùng nổ!').
+2. Tóm tắt nội dung chính: Chia thành 3-5 ý chính rõ ràng, mỗi ý có tiêu đề đậm và mô tả súc tích.
+3. Các quyết định/Lưu ý quan trọng: Điểm lại những gì học viên cần chốt hoặc nhớ kỹ.
+4. Bài tập & Deadline: Liệt kê rõ ràng những việc cần hoàn thành.
+5. Lời kết: Động viên và nhắc nhở các bạn.
+
+Giọng văn: Chuyên nghiệp nhưng gần gũi, sử dụng các từ như 'chúng mình', 'các bạn'. 
+Yêu cầu: Định dạng Markdown đẹp mắt, sử dụng emoji phù hợp để tăng tính sinh động.`;
+
+      if (uploadedFile && uploadedFile.rawFile) {
+        // Phân tích từ File PDF/Ảnh bài giảng
+        agentResponse = await taService.callAgentWithFile(
+          selectedSpaceFilter,
+          query,
+          senderId,
+          uploadedFile.rawFile
+        );
+      } else {
+        // Tóm tắt từ hội thoại trong phòng chat
+        agentResponse = await taService.callAgentChat(
+          selectedSpaceFilter,
+          query,
+          senderId
+        );
+      }
+      console.log('[DEBUG] Agent Response:', agentResponse);
+      if (agentResponse && agentResponse.answer) {
+        // Lưu bản thảo vào DB sau khi Agent trả về kết quả
         const res = await taService.createSummaryDraft({
           spaceId: selectedSpaceFilter,
-          content: mockContent,
-          metadata: mockMetadata,
+          content: agentResponse.answer,
+          metadata: { 
+            processing_time: agentResponse.processing_time,
+            source: uploadedFile ? 'multimedia' : 'conversation',
+            created_by: user?.id
+          },
           draft_type: 'lesson_recap'
         });
 
         if (res.success) {
-          setAiPreview(res.data); // res.data đã bao gồm id và space_id từ DB
+          setAiPreview(res.data);
           setCurrentStep(3);
         } else {
-          alert('❌ Không thể lưu bản thảo AI.');
+          alert('❌ Không thể lưu bản thảo Recap.');
           setCurrentStep(1);
         }
-      } catch (error) {
-        console.error('AI Analysis failed:', error);
-        alert('❌ Lỗi kết nối AI Service.');
-        setCurrentStep(1);
+      } else {
+        throw new Error('Agent returned invalid response');
       }
-    }, 2500);
+    } catch (error) {
+      console.error('AI Analysis failed:', error);
+      alert('❌ Lỗi phân tích từ AI Agent: ' + (error.message || 'Dịch vụ không phản hồi'));
+      setCurrentStep(1);
+    }
   };
 
-  const handleGenerateAnnouncement = (purpose, context) => {
+  const handleGenerateAnnouncement = async (purpose, context) => {
     if (selectedSpaceFilter === 'all') {
       alert('⚠️ Vui lòng chọn một lớp học cụ thể ở thanh bộ lọc phía trên trước khi tạo thông báo!');
       return;
     }
     setUploading(true);
-    setTimeout(async () => {
-      const mockContent = `📢 **THÔNG BÁO ${purpose.toUpperCase()}** 📢\n\nChào cả lớp, thầy có thông báo về việc ${purpose === 'attendance' ? 'điểm danh' : purpose === 'homework' ? 'nộp bài tập' : 'lịch trình lớp học'}:\n\n- **Nội dung**: ${context}\n- **Thời gian áp dụng**: Từ hôm nay\n\nChúc các em học tốt!\n\n---\n*Thông báo tự động từ TA Assistant*`;
+    try {
+      const senderId = user?.display_name || user?.id || 'TA';
+      const query = `Hãy đóng vai một Trợ giảng chuyên nghiệp. Soạn một thông báo gửi tới lớp học.
+Mục đích: ${purpose}
+Ngữ cảnh cụ thể: ${context || 'Chưa có thông tin chi tiết'}
+
+Yêu cầu:
+- Phong cách: Gần gũi, khích lệ nhưng vẫn trang trọng.
+- Định dạng: Markdown (dùng Bold, Bullet points để dễ đọc).
+- Sử dụng Emoji phù hợp.
+- Độ dài: Súc tích, tập trung vào thông tin cần truyền tải.`;
+
+      const agentResponse = await taService.callAgentChat(selectedSpaceFilter, query, senderId);
       
-      try {
+      if (agentResponse && agentResponse.answer) {
         const res = await taService.createSummaryDraft({
           spaceId: selectedSpaceFilter,
-          content: mockContent,
-          metadata: { purpose, context },
+          content: agentResponse.answer,
+          metadata: { purpose, context, created_by: user?.id, processing_time: agentResponse.processing_time },
           draft_type: 'announcement'
         });
 
         if (res.success) {
           setAiPreview(res.data);
-        } else {
-          alert('❌ Lỗi tạo thông báo.');
+          // Cập nhật hàng đợi hiển thị
+          setSummaryQueue([res.data, ...summaryQueue]);
         }
-      } catch (error) {
-        console.error('Announcement generation failed:', error);
-      } finally {
-        setUploading(false);
       }
-    }, 2000);
+    } catch (error) {
+      console.error('Announcement generation failed:', error);
+      alert('❌ Không thể tạo thông báo bằng AI: ' + error.message);
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleResolveAlert = async (id, spaceId) => {
     try {
       await taService.resolveAlert(id, spaceId);
-      await fetchData();
+      markAsProcessed(id); // Ẩn ngay lập tức khỏi Dashboard
     } catch (error) {
       console.error('Resolve failed:', error);
     }
@@ -209,6 +295,15 @@ const TADashboard = () => {
 
   const handleApproveSummary = async (draftId, spaceId) => {
     try {
+      // 1. Cập nhật nội dung bản thảo lên server trước (để lưu những gì TA đã sửa như 'ABC')
+      if (aiPreview && aiPreview.id === draftId) {
+        await taService.updateSummaryDraft(draftId, spaceId, {
+          content: aiPreview.content,
+          metadata: aiPreview.metadata
+        });
+      }
+
+      // 2. Sau đó mới gọi phê duyệt để đăng bài
       await taService.approveSummary(draftId, spaceId);
       alert('✅ Bản tóm tắt đã được phê duyệt và đăng bài thành công!');
       fetchData();
@@ -219,13 +314,29 @@ const TADashboard = () => {
       }
     } catch (error) {
       console.error('Approval failed:', error);
-      alert('❌ Lỗi khi phê duyệt bản tóm tắt.');
+      const errorMsg = error.response?.data?.message || error.message || 'Lỗi không xác định';
+      alert(`❌ Lỗi khi phê duyệt bản tóm tắt: ${errorMsg}`);
     }
   };
   
   const handleScheduleSummary = async (draftId, spaceId, scheduledAt) => {
+    console.log('[DEBUG] Scheduling summary:', { draftId, spaceId, scheduledAt });
+    if (!draftId || !spaceId || !scheduledAt) {
+      alert(`⚠️ Thiếu thông tin đặt lịch: ${!draftId ? 'ID bản thảo, ' : ''}${!spaceId ? 'ID lớp học, ' : ''}${!scheduledAt ? 'Thời gian' : ''}`);
+      return;
+    }
     try {
-      await taService.scheduleSummary(draftId, spaceId, scheduledAt);
+      // 1. Lưu nội dung mới nhất (ví dụ 'ABC') trước khi đặt lịch
+      if (aiPreview && aiPreview.id === draftId) {
+        await taService.updateSummaryDraft(draftId, spaceId, {
+          content: aiPreview.content,
+          metadata: aiPreview.metadata
+        });
+      }
+
+      // 2. Chuyển đổi sang ISO String để tránh lệch múi giờ khi lưu vào DB
+      const isoDate = new Date(scheduledAt).toISOString();
+      await taService.scheduleSummary(draftId, spaceId, isoDate);
       alert(`📅 Đã đặt lịch gửi bản tóm tắt vào: ${new Date(scheduledAt).toLocaleString()}`);
       fetchData();
       if (currentStep === 3) {
@@ -301,12 +412,25 @@ const TADashboard = () => {
   };
 
   const handleAiSend = async (message) => {
-    // Logic gửi tin nhắn (thường là gọi dmsService)
-    alert(`🤖 Tin nhắn AI đã được gửi: \n\n"${message}"`);
-    if (currentContext) {
-      handleResolveAlert(currentContext.id, currentContext.spaceId);
+    if (!currentContext) return;
+    
+    try {
+      setLoading(true);
+      await taService.sendSmartMessage(currentContext.at_risk_data?.space_id || selectedSpaceFilter, {
+        studentId: currentContext.student_info?.id,
+        content: message,
+        snapshotId: currentContext.id
+      });
+      
+      markAsProcessed(currentContext.id); // Ẩn ngay sau khi gửi tin nhắn hỗ trợ thành công
+      alert(`🤖 Tin nhắn AI đã được gửi thành công đến học viên!`);
+      setIsComposeOpen(false);
+    } catch (error) {
+      console.error('Failed to send smart message:', error);
+      alert('❌ Lỗi khi gửi tin nhắn AI: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setLoading(false);
     }
-    setIsComposeOpen(false);
   };
 
   const formatOfflineTime = (student) => {
@@ -387,6 +511,7 @@ const TADashboard = () => {
         onClose={() => setIsComposeOpen(false)} 
         context={currentContext} 
         onSend={handleAiSend} 
+        isSending={loading}
       />
 
       <aside className="ta-internal-sidebar">
@@ -499,14 +624,14 @@ const TADashboard = () => {
                   </div>
                 </div>
                 <div className="ta-card-body" style={{ padding: 0 }}>
-                  {filteredAtRisk.length === 0 ? (
+                  {getCategorizedAlerts().length === 0 ? (
                     <div className="empty-state" style={{ padding: '60px 0' }}>
                       <FiCheckCircle size={48} color="var(--ta-accent)" style={{ marginBottom: '16px', opacity: 0.5 }} />
                       <h3>Mọi thứ đang trong tầm kiểm soát</h3>
                       <p style={{ color: 'var(--ta-text3)' }}>Tất cả học viên đều đang tương tác ổn định.</p>
                     </div>
                   ) : (
-                    filteredAtRisk.map(student => (
+                    getCategorizedAlerts().map(student => (
                       <RiskCard 
                         key={student.id} 
                         student={student} 
@@ -514,7 +639,7 @@ const TADashboard = () => {
                         onResolve={handleResolveAlert}
                         onGetContext={handleOpenCompose}
                         formatOfflineTime={formatOfflineTime}
-                        getRiskColor={getRiskColor}
+                        getRiskColor={() => student.color}
                         getHomeworkBadge={getHomeworkBadge}
                       />
                     ))

@@ -3,8 +3,9 @@ import {
   FiX, FiSend, FiCpu, FiMessageCircle, FiSmile, FiUser, 
   FiInfo, FiCopy, FiCheck, FiAlertCircle, FiTrendingUp 
 } from 'react-icons/fi';
+import taService from '../../services/ta.service';
 
-const AiComposeModal = ({ isOpen, onClose, context, onSend }) => {
+const AiComposeModal = ({ isOpen, onClose, context, onSend, isSending }) => {
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(false);
   const [tone, setTone] = useState('helpful');
@@ -17,27 +18,23 @@ const AiComposeModal = ({ isOpen, onClose, context, onSend }) => {
     }
   }, [isOpen, context, tone]);
 
-  const generateDraft = () => {
-    // Đảm bảo signals luôn là một chuỗi an toàn
-    const signalsArr = context?.at_risk_data?.signals;
-    const signalsStr = Array.isArray(signalsArr) ? signalsArr.join(', ') : 'vắng mặt lâu ngày';
-
-    // Giả lập gọi AI Agent
-    setTimeout(() => {
-      const studentName = context?.student_info?.name || 'Học viên';
-      
-      let aiContent = '';
-      if (tone === 'helpful') {
-        aiContent = `Chào ${studentName}, mình là Trợ lý AI từ lớp học đây. Thầy cô để ý thấy gần đây bạn có vẻ ${signalsStr}. Không biết bạn có gặp khó khăn gì ở phần nào không? Nếu cần hỗ trợ gì về bài tập hay nội dung bài giảng, đừng ngần ngại nhắn tin cho mình hoặc thầy cô nhé! Chúc bạn học tốt! ✨`;
-      } else if (tone === 'urgent') {
-        aiContent = `Chào ${studentName}, mình nhận thấy bạn đã không online khá lâu và đang gặp cảnh báo rủi ro. Việc vắng mặt lâu có thể khiến bạn mất gốc kiến thức quan trọng. Bạn vui lòng phản hồi tin nhắn này để thầy cô biết tình hình và hỗ trợ bạn kịp thời nhé!`;
-      } else {
-        aiContent = `Hey ${studentName}! Cố gắng lên nào! Thầy cô thấy bạn đang hơi "chững" lại một chút. Đừng để các rào cản làm bạn nản lòng. Hãy dành 15-20p mỗi ngày để duy trì thói quen học tập nhé. Bạn làm được mà! 💪`;
-      }
-      
-      setDraft(aiContent);
+  const generateDraft = async () => {
+    if (!context?.id) return;
+    
+    setLoading(true);
+    try {
+      const data = await taService.generateSmartMessage(context.id, tone);
+      // Đảm bảo dữ liệu là chuỗi văn bản
+      const content = typeof data.content === 'object' 
+        ? (data.content.answer || data.content.content || JSON.stringify(data.content))
+        : data.content;
+      setDraft(content);
+    } catch (error) {
+      console.error('Failed to generate AI draft:', error);
+      setDraft('❌ Lỗi khi kết nối với AI Agent. Vui lòng thử lại sau.');
+    } finally {
       setLoading(false);
-    }, 1200);
+    }
   };
 
   const handleCopy = () => {
@@ -169,10 +166,11 @@ const AiComposeModal = ({ isOpen, onClose, context, onSend }) => {
           <button 
             onClick={() => onSend(draft)} 
             className="vibrant-btn" 
-            style={{ padding: '10px 32px' }}
-            disabled={loading || !draft}
+            style={{ padding: '10px 32px', display: 'flex', alignItems: 'center', gap: '8px' }}
+            disabled={loading || isSending || !draft}
           >
-            <FiSend /> Gửi tin nhắn
+            {isSending ? <FiCpu className="spin" /> : <FiSend />}
+            {isSending ? 'Đang gửi...' : 'Gửi tin nhắn'}
           </button>
         </div>
       </div>

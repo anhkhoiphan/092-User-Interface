@@ -1,5 +1,5 @@
 import React from 'react';
-import { FiUploadCloud, FiRefreshCw, FiCheckCircle, FiChevronRight, FiCpu, FiFileText, FiList, FiCheckSquare, FiSend, FiClock, FiLayers } from 'react-icons/fi';
+import { FiUploadCloud, FiRefreshCw, FiCheckCircle, FiChevronRight, FiCpu, FiFileText, FiList, FiCheckSquare, FiSend, FiClock, FiLayers, FiMessageSquare, FiInfo } from 'react-icons/fi';
 
 const RecapWorkflow = ({ 
   currentStep, 
@@ -116,12 +116,27 @@ const RecapWorkflow = ({
             <div style={{ marginTop: '40px', textAlign: 'center' }}>
               <button 
                 className="vibrant-btn" 
-                style={{ minWidth: '280px', height: '54px', fontSize: '15px', borderRadius: '16px' }}
+                style={{ 
+                  minWidth: '320px', 
+                  height: '54px', 
+                  fontSize: '15px', 
+                  borderRadius: '16px',
+                  background: !uploadedFile ? 'linear-gradient(135deg, var(--ta-blue), #3b82f6)' : 'linear-gradient(135deg, var(--ta-accent), #8b5cf6)'
+                }}
                 onClick={startAiAnalysis}
-                disabled={!uploadedFile || uploading}
+                disabled={uploading}
               >
-                Tiến hành phân tích bằng AI <FiChevronRight style={{ marginLeft: '10px' }} />
+                {uploading ? <><FiRefreshCw className="spin" style={{ marginRight: '10px' }} /> Đang xử lý...</> : 
+                 uploadedFile ? <><FiCpu style={{ marginRight: '10px' }} /> Phân tích Slide & Hội thoại</> : 
+                 <><FiMessageSquare style={{ marginRight: '10px' }} /> Tóm tắt từ Hội thoại thực tế</>}
+                <FiChevronRight style={{ marginLeft: '10px' }} />
               </button>
+              
+              {!uploadedFile && (
+                <p style={{ fontSize: '12px', color: 'var(--ta-text3)', marginTop: '16px' }}>
+                  <FiInfo style={{ marginRight: '4px' }} /> Bạn có thể tải lên Slide để AI phân tích sâu hơn, hoặc tóm tắt ngay từ lịch sử chat.
+                </p>
+              )}
             </div>
           </div>
         )}
