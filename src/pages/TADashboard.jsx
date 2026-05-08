@@ -103,14 +103,16 @@ const TADashboard = () => {
     }
   };
 
+  const [processedSnapshots, setProcessedSnapshots] = useState(() => {
+    return JSON.parse(localStorage.getItem('ta_processed_snapshots') || '[]');
+  });
+
   // Logic phân loại và lọc Alert thông minh theo đặc tả rút gọn
   const getCategorizedAlerts = () => {
-    // Lấy danh sách đã xử lý từ localStorage để ẩn đi
-    const processedIds = JSON.parse(localStorage.getItem('ta_processed_snapshots') || '[]');
-    
     const filtered = atRiskList.filter(item => {
-      // Ẩn nếu đã xử lý trong phiên này
-      if (processedIds.includes(item.id)) return false;
+      // Ẩn nếu đã xử lý trong phiên này hoặc đã resolved trong DB
+      if (processedSnapshots.includes(item.id)) return false;
+      if (item.is_resolved) return false;
       // Filter theo lớp học nếu có chọn lọc
       if (selectedSpaceFilter !== 'all' && item.space_id !== selectedSpaceFilter) return false;
       return true;
