@@ -203,7 +203,7 @@ const TADashboard = () => {
     try {
       if (aiPreview?.id === draftId) await taService.updateSummaryDraft(draftId, spaceId, { content: aiPreview.content });
       const res = await taService.approveSummary(draftId, spaceId);
-      if (res.success && selectedSpaces.length > 1) {
+      if (res.success && selectedSpaces.length > 1 && (!aiPreview || aiPreview.status === 'pending')) {
         const otherSpaces = selectedSpaces.filter(id => id !== spaceId);
         await Promise.all(otherSpaces.map(async (sid) => {
           const newDraftRes = await taService.createSummaryDraft({ spaceId: sid, content: aiPreview?.content || '', draft_type: aiPreview?.draft_type });
@@ -217,16 +217,52 @@ const TADashboard = () => {
   const handleScheduleSummary = async (draftId, spaceId, scheduledAt) => {
     setIsSending(true);
     try {
-      const res = await taService.scheduleSummary(draftId, spaceId, scheduledAt);
-      if (res.success) { addToast('Đã đặt lịch!'); fetchData(); setAiPreview(null); setCurrentStep(1); }
+      if (aiPreview?.id === draftId) await taService.updateSummaryDraft(draftId, spaceId, { content: aiPreview.content });
+      const isoDate = new Date(scheduledAt).toISOString();
+      const res = await taService.scheduleSummary(draftId, spaceId, isoDate);
+      
+      if (res.success && selectedSpaces.length > 1 && (!aiPreview || aiPreview.status === 'pending')) {
+        const otherSpaces = selectedSpaces.filter(id => id !== spaceId);
+        await Promise.all(otherSpaces.map(async (sid) => {
+          const newDraftRes = await taService.createSummaryDraft({ spaceId: sid, content: aiPreview?.content || '', draft_type: aiPreview?.draft_type });
+          if (newDraftRes?.success) await taService.scheduleSummary(newDraftRes.data.id, sid, isoDate);
+        }));
+      }
+      
+      addToast('Đã đặt lịch!'); fetchData(); setAiPreview(null); setCurrentStep(1);
     } catch (error) {} finally { setIsSending(false); }
   };
 
   const handleEditScheduled = (item) => {
     setAiPreview(item);
+    setSelectedSpaces([item.space_id]);
     if (item.draft_type === 'lesson_recap') { setActiveTab('summary'); setCurrentStep(3); }
     else { setActiveTab('announcements'); }
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleBulkCancel = async (ids) => {
+    setIsSending(true);
+    try {
+      await Promise.all(ids.map(async id => {
+        const item = summaryQueue.find(q => q.id === id);
+        if(item) await taService.cancelSchedule(id, item.space_id);
+      }));
+      addToast('Đã hủy lịch hàng loạt');
+      fetchData();
+    } catch (e) {} finally { setIsSending(false); }
+  };
+
+  const handleBulkSendNow = async (ids) => {
+    setIsSending(true);
+    try {
+      await Promise.all(ids.map(async id => {
+        const item = summaryQueue.find(q => q.id === id);
+        if(item) await taService.approveSummary(id, item.space_id);
+      }));
+      addToast('Đã gửi hàng loạt');
+      fetchData();
+    } catch (e) {} finally { setIsSending(false); }
   };
 
   const handleCancelSchedule = async (draftId, spaceId) => {
@@ -458,7 +494,7 @@ const TADashboard = () => {
                 setAiPreview={setAiPreview} handleScheduleSummary={handleScheduleSummary} selectedSpaces={selectedSpaces || []} setSelectedSpaces={setSelectedSpaces}
                 taSpaces={taSpaces || []} handleRefineAi={handleRefineAi}
               />
-              <ScheduledQueueList queue={summaryQueue.filter(q => q.draft_type === 'lesson_recap')} taSpaces={taSpaces} onEdit={handleEditScheduled} onSendNow={handleApproveSummary} onCancelSchedule={handleCancelSchedule} isLoading={isSending} />
+              <ScheduledQueueList queue={summaryQueue.filter(q => q.draft_type === 'lesson_recap')} taSpaces={spaces} onEdit={handleEditScheduled} onSendNow={handleApproveSummary} onCancelSchedule={handleCancelSchedule} onBulkCancel={handleBulkCancel} onBulkSendNow={handleBulkSendNow} isLoading={isSending} />
             </div>
           )}
 
@@ -488,7 +524,7 @@ const TADashboard = () => {
                 scheduleDate={scheduleDate} setScheduleDate={setScheduleDate} selectedSpaces={selectedSpaces} setSelectedSpaces={setSelectedSpaces}
                 taSpaces={taSpaces} handleRefineAi={handleRefineAi}
               />
-              <ScheduledQueueList queue={summaryQueue.filter(q => q.draft_type === 'announcement')} taSpaces={taSpaces} onEdit={handleEditScheduled} onSendNow={handleApproveSummary} onCancelSchedule={handleCancelSchedule} isLoading={isSending} />
+              <ScheduledQueueList queue={summaryQueue.filter(q => q.draft_type === 'announcement')} taSpaces={spaces} onEdit={handleEditScheduled} onSendNow={handleApproveSummary} onCancelSchedule={handleCancelSchedule} onBulkCancel={handleBulkCancel} onBulkSendNow={handleBulkSendNow} isLoading={isSending} />
             </div>
           )}
 

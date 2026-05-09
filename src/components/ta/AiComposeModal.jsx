@@ -15,6 +15,25 @@ const AiComposeModal = ({ isOpen, onClose, context, onSend, isSending }) => {
     { id: 'casual', label: 'Gần gũi', icon: '🤝' },
   ];
 
+  const compileRules = (rulesObj = {}) => {
+    const ruleTexts = {
+      useEmoji: "Sử dụng emoji phù hợp",
+      friendlyTone: "Giọng văn thân thiện",
+      noRobotic: "Tránh dùng từ ngữ máy móc",
+      offerSupport1on1: "Đề nghị hỗ trợ 1-1",
+      mentionLastSeen: "Đề cập đến thời gian vắng mặt",
+      includeHomework: "Có mục bài tập về nhà",
+      includeTips: "Có mục Tips & Tricks",
+      useTable: "Sử dụng bảng tóm tắt",
+      boldKeyInfo: "In đậm thông tin quan trọng",
+      urgentAction: "Yêu cầu hành động khẩn cấp"
+    };
+    return Object.entries(rulesObj)
+      .filter(([_, enabled]) => enabled)
+      .map(([key, _]) => `- ${ruleTexts[key] || key}`)
+      .join('\n');
+  };
+
   const generateMessage = async (tone = currentTone, instruction = '') => {
     if (!context?.id) return;
     setGenerating(true);
@@ -27,8 +46,12 @@ const AiComposeModal = ({ isOpen, onClose, context, onSend, isSending }) => {
       const finalInstruction = `
 [MỤC TIÊU DM]: ${d.goal || 'hỏi thăm'}
 [ĐỘ DÀI]: ${d.length || 'vừa phải'}
-[NGUYÊN TẮC CHUNG]: ${g.instruction || ''}
-[CHỈ DẪN RIÊNG DM]: ${d.instruction || ''}
+[QUY TẮC CHUNG]:
+${compileRules(g.rules)}
+${g.instruction || ''}
+[QUY TẮC DM]:
+${compileRules(d.rules)}
+${d.instruction || ''}
 ${instruction ? `[YÊU CẦU HIỆU CHỈNH]: ${instruction}` : ''}
 `.trim();
 
