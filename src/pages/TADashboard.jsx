@@ -15,6 +15,7 @@ import RiskCard from '../components/ta/RiskCard';
 import RecapWorkflow from '../components/ta/RecapWorkflow';
 import AnnouncementWorkflow from '../components/ta/AnnouncementWorkflow';
 import AiComposeModal from '../components/ta/AiComposeModal';
+import ScheduledQueueList from '../components/ta/ScheduledQueueList';
 
 import './TADashboard.css';
 
@@ -184,6 +185,54 @@ const TADashboard = () => {
         setAiPreview(null);
         setCurrentStep(1);
       }
+    } catch (error) {} finally { setIsSending(false); }
+  };
+
+  // --- Scheduled Queue Actions ---
+  const handleEditScheduled = (item) => {
+    setAiPreview(item);
+    if (item.draft_type === 'lesson_recap') {
+      setActiveTab('summary');
+      setCurrentStep(3);
+    } else {
+      setActiveTab('announcements');
+    }
+    // Lăn lên đầu để sửa
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelSchedule = async (draftId, spaceId) => {
+    try {
+      setIsSending(true);
+      const res = await taService.cancelSchedule(draftId, spaceId);
+      if (res.success) {
+        addToast('Đã hủy lịch gửi');
+        fetchData();
+      }
+    } catch (error) {} finally { setIsSending(false); }
+  };
+
+  const handleBulkCancel = async (ids) => {
+    try {
+      setIsSending(true);
+      await Promise.all(ids.map(id => {
+        const item = summaryQueue.find(q => q.id === id);
+        return taService.cancelSchedule(id, item.space_id);
+      }));
+      addToast(`Đã hủy ${ids.length} bài viết`);
+      fetchData();
+    } catch (error) {} finally { setIsSending(false); }
+  };
+
+  const handleBulkSendNow = async (ids) => {
+    try {
+      setIsSending(true);
+      await Promise.all(ids.map(id => {
+        const item = summaryQueue.find(q => q.id === id);
+        return taService.approveSummary(id, item.space_id);
+      }));
+      addToast(`Đã gửi ${ids.length} bài viết ngay lập tức`);
+      fetchData();
     } catch (error) {} finally { setIsSending(false); }
   };
 
@@ -427,33 +476,57 @@ const TADashboard = () => {
                 setAiPreview={setAiPreview} handleScheduleSummary={handleScheduleSummary} selectedSpaces={selectedSpaces || []} setSelectedSpaces={setSelectedSpaces}
                 taSpaces={taSpaces || []} handleRefineAi={handleRefineAi}
               />
+
+              <ScheduledQueueList 
+                queue={summaryQueue.filter(q => q.draft_type === 'lesson_recap')}
+                taSpaces={taSpaces}
+                onEdit={handleEditScheduled}
+                onSendNow={handleApproveSummary}
+                onCancelSchedule={handleCancelSchedule}
+                onBulkCancel={handleBulkCancel}
+                onBulkSendNow={handleBulkSendNow}
+                isLoading={isSending}
+              />
             </div>
           )}
 
           {activeTab === 'announcements' && (
-            <AnnouncementWorkflow 
-              isHitlEnabled={aiConfig.isHitlEnabled}
-              onGenerate={async (p, c) => {
-                if (selectedSpaces.length === 0) return;
-                setIsAnalyzing(true);
-                try {
-                  const prompt = buildAnnouncementPrompt(p, c);
-                  const resAgent = await taService.callAgentChat(selectedSpaces[0], prompt, user?.display_name || 'TA');
-                  if (resAgent?.success && resAgent.answer) {
-                    const res = await taService.createSummaryDraft({
-                      spaceId: selectedSpaces[0], content: resAgent.answer, draft_type: 'announcement'
-                    });
-                    if (res.success) {
-                      setAiPreview(res.data);
-                      if (!aiConfig.isHitlEnabled) handleApproveSummary(res.data.id, res.data.space_id);
+            <div className="animate-fade">
+              <AnnouncementWorkflow 
+                isHitlEnabled={aiConfig.isHitlEnabled}
+                onGenerate={async (p, c) => {
+                  if (selectedSpaces.length === 0) return;
+                  setIsAnalyzing(true);
+                  try {
+                    const prompt = buildAnnouncementPrompt(p, c);
+                    const resAgent = await taService.callAgentChat(selectedSpaces[0], prompt, user?.display_name || 'TA');
+                    if (resAgent?.success && resAgent.answer) {
+                      const res = await taService.createSummaryDraft({
+                        spaceId: selectedSpaces[0], content: resAgent.answer, draft_type: 'announcement'
+                      });
+                      if (res.success) {
+                        setAiPreview(res.data);
+                        if (!aiConfig.isHitlEnabled) handleApproveSummary(res.data.id, res.data.space_id);
+                      }
                     }
-                  }
-                } catch (error) {} finally { setIsAnalyzing(false); }
-              }} 
-              loading={isAnalyzing} aiPreview={aiPreview} setAiPreview={setAiPreview} handleApprove={handleApproveSummary} handleSchedule={handleScheduleSummary}
-              scheduleDate={scheduleDate} setScheduleDate={setScheduleDate} selectedSpaces={selectedSpaces} setSelectedSpaces={setSelectedSpaces}
-              taSpaces={taSpaces} handleRefineAi={handleRefineAi}
-            />
+                  } catch (error) {} finally { setIsAnalyzing(false); }
+                }} 
+                loading={isAnalyzing} aiPreview={aiPreview} setAiPreview={setAiPreview} handleApprove={handleApproveSummary} handleSchedule={handleScheduleSummary}
+                scheduleDate={scheduleDate} setScheduleDate={setScheduleDate} selectedSpaces={selectedSpaces} setSelectedSpaces={setSelectedSpaces}
+                taSpaces={taSpaces} handleRefineAi={handleRefineAi}
+              />
+
+              <ScheduledQueueList 
+                queue={summaryQueue.filter(q => q.draft_type === 'announcement')}
+                taSpaces={taSpaces}
+                onEdit={handleEditScheduled}
+                onSendNow={handleApproveSummary}
+                onCancelSchedule={handleCancelSchedule}
+                onBulkCancel={handleBulkCancel}
+                onBulkSendNow={handleBulkSendNow}
+                isLoading={isSending}
+              />
+            </div>
           )}
 
           {activeTab === 'logs' && (
