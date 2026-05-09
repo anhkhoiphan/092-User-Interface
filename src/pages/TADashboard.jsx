@@ -164,15 +164,39 @@ const TADashboard = () => {
   const handleApproveSummary = async (draftId, spaceId) => {
     setIsSending(true);
     try {
-      if (aiPreview?.id === draftId) await taService.updateSummaryDraft(draftId, spaceId, { content: aiPreview.content });
+      // 1. Cập nhật nội dung bản thảo gốc (phòng trường hợp TA sửa tay)
+      if (aiPreview?.id === draftId) {
+        await taService.updateSummaryDraft(draftId, spaceId, { content: aiPreview.content });
+      }
+      
+      // 2. Duyệt bản thảo cho lớp hiện tại
       const res = await taService.approveSummary(draftId, spaceId);
+      
+      // 3. BROADCAST: Gửi cho các lớp khác nếu có trong danh sách selected
+      if (res.success && selectedSpaces.length > 1) {
+        const otherSpaces = selectedSpaces.filter(id => id !== spaceId);
+        await Promise.all(otherSpaces.map(async (sid) => {
+          const newDraftRes = await taService.createSummaryDraft({
+            spaceId: sid,
+            content: aiPreview?.content || '',
+            draft_type: aiPreview?.draft_type || 'lesson_recap',
+            metadata: aiPreview?.metadata || {}
+          });
+          if (newDraftRes.success) {
+            await taService.approveSummary(newDraftRes.data.id, sid);
+          }
+        }));
+      }
+
       if (res.success) {
-        addToast('Đã gửi bài!');
+        addToast(selectedSpaces.length > 1 ? `Đã gửi bài cho ${selectedSpaces.length} lớp!` : 'Đã gửi bài!');
         fetchData();
         setAiPreview(null);
         setCurrentStep(1);
       }
-    } catch (error) {} finally { setIsSending(false); }
+    } catch (error) {
+      addToast('Lỗi khi gửi bài', 'error');
+    } finally { setIsSending(false); }
   };
 
   const handleScheduleSummary = async (draftId, spaceId, scheduledAt) => {
