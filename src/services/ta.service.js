@@ -130,8 +130,11 @@ const taService = {
   /**
    * AI: Tạo bản thảo tin nhắn thông minh dựa trên context rủi ro
    */
-  generateSmartMessage: async (snapshotId, tone) => {
-    const response = await api.get(`/ta/agent/smart-message/${snapshotId}?tone=${tone}`);
+  generateSmartMessage: async (snapshotId, tone, config = {}) => {
+    const { instruction = '', pronouns = '', taName = '' } = config;
+    const response = await api.get(`/ta/agent/smart-message/${snapshotId}`, {
+      params: { tone, instruction, pronouns, taName }
+    });
     return response.data;
   },
 
