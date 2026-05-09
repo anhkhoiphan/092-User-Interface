@@ -134,13 +134,32 @@ const TADashboard = () => {
   const buildRecapPrompt = () => {
     const g = aiConfig.global;
     const r = aiConfig.recap;
-    return `[GLOBAL] Xưng hô: ${r.pronouns || g.pronouns}. Quy tắc:\n${compileRules(g.rules)}\n${g.instruction}\n[RECAP] Tone: ${r.tone}. Focus: ${r.highlight}. Quy tắc:\n${compileRules(r.rules)}\n${r.instruction}`;
+    const pronouns = r.pronouns || g.pronouns;
+    return `[ROLE] Bạn là một Trợ Giảng (Teaching Assistant) xuất sắc.
+[OBJECTIVE] Viết một bài Recap (Tóm tắt bài giảng) chất lượng cao.
+[RULES]
+- Xưng hô bắt buộc: ${pronouns}.
+- Tone giọng: ${r.tone}.
+- Trọng tâm (Focus): ${r.highlight}.
+- Quy tắc chung:\\n${compileRules(g.rules)}\\n${g.instruction}
+- Quy tắc Recap:\\n${compileRules(r.rules)}\\n${r.instruction}
+[OUTPUT FORMAT] CHỈ xuất ra nội dung bài viết định dạng Markdown. TUYỆT ĐỐI KHÔNG kèm theo các câu giao tiếp của AI (như 'Đây là bài viết...', 'Vâng, tôi hiểu').`;
   };
 
   const buildAnnouncementPrompt = (p, c) => {
     const g = aiConfig.global;
     const a = aiConfig.announcement;
-    return `[GLOBAL] Xưng hô: ${a.pronouns || g.pronouns}. Quy tắc:\n${compileRules(g.rules)}\n[THÔNG BÁO] Loại: ${p}. Ngữ cảnh: ${c}. Quy tắc:\n${compileRules(a.rules)}\n${a.instruction}`;
+    const pronouns = a.pronouns || g.pronouns;
+    return `[ROLE] Bạn là một Trợ Giảng (Teaching Assistant) xuất sắc.
+[OBJECTIVE] Viết một bài Thông Báo (Announcement) gửi cho lớp học.
+[CONTEXT] 
+- Loại thông báo: ${p}
+- Ngữ cảnh chi tiết: ${c}
+[RULES]
+- Xưng hô bắt buộc: ${pronouns}.
+- Quy tắc chung:\\n${compileRules(g.rules)}\\n${g.instruction}
+- Quy tắc Thông báo:\\n${compileRules(a.rules)}\\n${a.instruction}
+[OUTPUT FORMAT] CHỈ xuất ra nội dung bài viết định dạng Markdown. TUYỆT ĐỐI KHÔNG kèm theo các câu giao tiếp của AI (như 'Đây là bài viết...', 'Vâng, tôi hiểu').`;
   };
 
   const fetchData = async () => {
@@ -283,7 +302,19 @@ const TADashboard = () => {
     if (!aiPreview || !selectedSpaces.length) return;
     setIsAnalyzing(true);
     try {
-      const prompt = `Đây là nội dung bản thảo hiện tại:\n${aiPreview.content}\nHãy sửa lại theo yêu cầu: ${refineInstruction}`;
+      const g = aiConfig.global;
+      const pronouns = g.pronouns || "mình - bạn";
+      
+      const prompt = `[ROLE] Bạn là Trợ Giảng. Bạn đang chỉnh sửa lại một bản thảo do chính bạn viết.
+[BẢN THẢO HIỆN TẠI]:
+---
+${aiPreview.content}
+---
+[YÊU CẦU HIỆU CHỈNH]: ${refineInstruction}
+[RULES] BẮT BUỘC giữ nguyên cấu trúc xưng hô gốc (${pronouns}) và tuân thủ các quy tắc cơ bản:
+${compileRules(g.rules)}
+[OUTPUT FORMAT] CHỈ trả về bản thảo đã được sửa lại. TUYỆT ĐỐI KHÔNG nói luyên thuyên (như 'Dưới đây là bản sửa...', 'Vâng').`;
+
       const resAgent = await taService.callAgentChat(selectedSpaces[0], prompt, user?.id);
       
       const aiContent = resAgent?.answer || resAgent?.content || resAgent?.response;
