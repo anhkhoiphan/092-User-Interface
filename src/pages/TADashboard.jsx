@@ -198,15 +198,18 @@ const TADashboard = () => {
     } catch (error) {}
   };
 
-  const handleApproveSummary = async (draftId, spaceId) => {
+  const handleApproveSummary = async (draftId, spaceId, autoPilotData = null) => {
     setIsSending(true);
     try {
-      if (aiPreview?.id === draftId) await taService.updateSummaryDraft(draftId, spaceId, { content: aiPreview.content });
+      const activeContent = autoPilotData?.content || aiPreview?.content || '';
+      const activeType = autoPilotData?.draft_type || aiPreview?.draft_type || '';
+
+      if (aiPreview?.id === draftId) await taService.updateSummaryDraft(draftId, spaceId, { content: activeContent });
       const res = await taService.approveSummary(draftId, spaceId);
       if (res.success && selectedSpaces.length > 1 && (!aiPreview || aiPreview.status === 'pending')) {
         const otherSpaces = selectedSpaces.filter(id => id !== spaceId);
         await Promise.all(otherSpaces.map(async (sid) => {
-          const newDraftRes = await taService.createSummaryDraft({ spaceId: sid, content: aiPreview?.content || '', draft_type: aiPreview?.draft_type });
+          const newDraftRes = await taService.createSummaryDraft({ spaceId: sid, content: activeContent, draft_type: activeType });
           if (newDraftRes?.success) await taService.approveSummary(newDraftRes.data.id, sid);
         }));
       }
@@ -214,17 +217,20 @@ const TADashboard = () => {
     } catch (error) { addToast('Lỗi gửi bài', 'error'); } finally { setIsSending(false); }
   };
 
-  const handleScheduleSummary = async (draftId, spaceId, scheduledAt) => {
+  const handleScheduleSummary = async (draftId, spaceId, scheduledAt, autoPilotData = null) => {
     setIsSending(true);
     try {
-      if (aiPreview?.id === draftId) await taService.updateSummaryDraft(draftId, spaceId, { content: aiPreview.content });
+      const activeContent = autoPilotData?.content || aiPreview?.content || '';
+      const activeType = autoPilotData?.draft_type || aiPreview?.draft_type || '';
+
+      if (aiPreview?.id === draftId) await taService.updateSummaryDraft(draftId, spaceId, { content: activeContent });
       const isoDate = new Date(scheduledAt).toISOString();
       const res = await taService.scheduleSummary(draftId, spaceId, isoDate);
       
       if (res.success && selectedSpaces.length > 1 && (!aiPreview || aiPreview.status === 'pending')) {
         const otherSpaces = selectedSpaces.filter(id => id !== spaceId);
         await Promise.all(otherSpaces.map(async (sid) => {
-          const newDraftRes = await taService.createSummaryDraft({ spaceId: sid, content: aiPreview?.content || '', draft_type: aiPreview?.draft_type });
+          const newDraftRes = await taService.createSummaryDraft({ spaceId: sid, content: activeContent, draft_type: activeType });
           if (newDraftRes?.success) await taService.scheduleSummary(newDraftRes.data.id, sid, isoDate);
         }));
       }
@@ -471,6 +477,31 @@ const TADashboard = () => {
                 }} 
                 startAiAnalysis={async () => {
                   if (selectedSpaces.length === 0) return;
+
+                  if (!aiConfig.isHitlEnabled) {
+                    addToast('Đã giao AI xử lý nền. Bạn có thể làm việc khác!');
+                    setCurrentStep(1); setUploadedFile(null);
+                    // Chạy ngầm (Background Task)
+                    (async () => {
+                      try {
+                        const prompt = buildRecapPrompt();
+                        let resAgent;
+                        if (uploadedFile && uploadedFile.rawFile) resAgent = await taService.callAgentWithFile(selectedSpaces[0], prompt, user?.id || 'TA', uploadedFile.rawFile);
+                        else resAgent = await taService.callAgentChat(selectedSpaces[0], prompt, user?.id || 'TA');
+                        
+                        const aiContent = resAgent?.answer || resAgent?.content || resAgent?.response;
+                        if (resAgent?.success && aiContent) {
+                          const res = await taService.createSummaryDraft({ spaceId: selectedSpaces[0], content: aiContent, draft_type: 'lesson_recap' });
+                          if (res?.success) {
+                            if (scheduleDate) handleScheduleSummary(res.data.id, res.data.space_id, scheduleDate, res.data);
+                            else handleApproveSummary(res.data.id, res.data.space_id, res.data);
+                          }
+                        }
+                      } catch(e) {}
+                    })();
+                    return;
+                  }
+
                   setCurrentStep(2); setIsAnalyzing(true);
                   try {
                     const prompt = buildRecapPrompt();
@@ -482,10 +513,7 @@ const TADashboard = () => {
                     if (resAgent?.success && aiContent) {
                       const res = await taService.createSummaryDraft({ spaceId: selectedSpaces[0], content: aiContent, draft_type: 'lesson_recap' });
                       if (res?.success) {
-                        const draftData = res.data;
-                        setAiPreview(draftData); 
-                        if (aiConfig.isHitlEnabled) setCurrentStep(3); 
-                        else handleApproveSummary(draftData.id, draftData.space_id); 
+                        setAiPreview(res.data); setCurrentStep(3); 
                       }
                     } else { addToast('AI không phản hồi', 'error'); }
                   } catch (error) { addToast('Lỗi khi phân tích AI', 'error'); setCurrentStep(1); } finally { setIsAnalyzing(false); }
@@ -504,6 +532,26 @@ const TADashboard = () => {
                 isHitlEnabled={aiConfig.isHitlEnabled}
                 onGenerate={async (p, c) => {
                   if (selectedSpaces.length === 0) return;
+
+                  if (!aiConfig.isHitlEnabled) {
+                    addToast('Đã giao AI xử lý nền. Bạn có thể làm việc khác!');
+                    (async () => {
+                      try {
+                        const prompt = buildAnnouncementPrompt(p, c);
+                        const resAgent = await taService.callAgentChat(selectedSpaces[0], prompt, user?.id || 'TA');
+                        const aiContent = resAgent?.answer || resAgent?.content || resAgent?.response;
+                        if (resAgent?.success && aiContent) {
+                          const res = await taService.createSummaryDraft({ spaceId: selectedSpaces[0], content: aiContent, draft_type: 'announcement' });
+                          if (res?.success) { 
+                            if (scheduleDate) handleScheduleSummary(res.data.id, res.data.space_id, scheduleDate, res.data);
+                            else handleApproveSummary(res.data.id, res.data.space_id, res.data);
+                          }
+                        }
+                      } catch(e) {}
+                    })();
+                    return;
+                  }
+
                   setIsAnalyzing(true);
                   try {
                     const prompt = buildAnnouncementPrompt(p, c);
@@ -513,9 +561,7 @@ const TADashboard = () => {
                     if (resAgent?.success && aiContent) {
                       const res = await taService.createSummaryDraft({ spaceId: selectedSpaces[0], content: aiContent, draft_type: 'announcement' });
                       if (res?.success) { 
-                        const draftData = res.data;
-                        setAiPreview(draftData); 
-                        if (!aiConfig.isHitlEnabled) handleApproveSummary(draftData.id, draftData.space_id); 
+                        setAiPreview(res.data); 
                       }
                     } else { addToast('AI không phản hồi', 'error'); }
                   } catch (error) { addToast('Lỗi khi soạn thông báo', 'error'); } finally { setIsAnalyzing(false); }
@@ -553,6 +599,30 @@ const TADashboard = () => {
           {activeTab === 'settings' && (
             <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '32px', padding: '24px 0', overflowY: 'auto', maxHeight: 'calc(100vh - 120px)' }}>
               
+              {/* 0. HITL CONTROL */}
+              <div className="ta-card-premium" style={{ border: configDraft.isHitlEnabled ? '1px solid var(--primary)' : '1px solid var(--border-primary)', transition: '0.3s' }}>
+                <div className="ta-card-body" style={{ padding: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ flex: 1, paddingRight: '24px' }}>
+                    <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', color: configDraft.isHitlEnabled ? 'var(--primary)' : 'var(--text-primary)' }}>
+                      <FiUser color={configDraft.isHitlEnabled ? "var(--primary)" : "var(--text-muted)"} /> 
+                      Kiểm duyệt thủ công (Human-in-the-Loop)
+                    </h3>
+                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                      Bật để xem trước và có cơ hội chỉnh sửa nội dung do AI soạn. Nếu tắt, AI sẽ được cấp quyền tự động gửi ngay lập tức sau khi tạo xong (Auto-Pilot).
+                    </div>
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}>
+                    <span style={{ fontWeight: 700, fontSize: '12px', color: configDraft.isHitlEnabled ? 'var(--primary)' : 'var(--text-muted)' }}>
+                      {configDraft.isHitlEnabled ? 'ĐANG BẬT' : 'ĐÃ TẮT'}
+                    </span>
+                    <div style={{ position: 'relative', width: '48px', height: '26px', background: configDraft.isHitlEnabled ? 'var(--primary)' : 'var(--bg-surface-tertiary)', border: configDraft.isHitlEnabled ? 'none' : '1px solid var(--border-primary)', borderRadius: '13px', transition: '0.3s' }}>
+                      <div style={{ position: 'absolute', top: configDraft.isHitlEnabled ? '3px' : '2px', left: configDraft.isHitlEnabled ? '25px' : '2px', width: '20px', height: '20px', background: configDraft.isHitlEnabled ? 'white' : 'var(--text-muted)', borderRadius: '50%', transition: '0.3s', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }} />
+                    </div>
+                    <input type="checkbox" checked={configDraft.isHitlEnabled} onChange={e => setConfigDraft({...configDraft, isHitlEnabled: e.target.checked})} style={{ display: 'none' }} />
+                  </label>
+                </div>
+              </div>
+
               {/* 1. LUẬT CHUNG */}
               <div className="ta-card-premium">
                 <div className="card-head" style={{ borderLeft: '4px solid var(--primary)' }}>
