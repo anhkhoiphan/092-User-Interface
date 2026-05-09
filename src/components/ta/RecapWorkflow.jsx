@@ -1,342 +1,263 @@
-import React from 'react';
-import { FiUploadCloud, FiRefreshCw, FiCheckCircle, FiChevronRight, FiCpu, FiFileText, FiList, FiCheckSquare, FiSend, FiClock, FiLayers, FiMessageSquare, FiInfo } from 'react-icons/fi';
+import React, { useState } from 'react';
+import * as Icons from 'react-icons/fi';
+import { marked } from 'marked';
 
-const RecapWorkflow = ({ 
-  currentStep, 
-  uploading, 
-  uploadedFile, 
-  handleFileUpload, 
-  startAiAnalysis, 
-  aiPreview, 
-  sendTime, 
-  setSendTime, 
-  scheduleDate, 
-  setScheduleDate, 
-  handleApproveSummary,
-  handleScheduleSummary,
-  setCurrentStep,
-  setAiPreview
-}) => {
+const RecapWorkflow = (props) => {
+  console.log("[RecapWorkflow] Render start...");
+  
+  const { 
+    currentStep = 1, 
+    uploading = false, 
+    uploadedFile = null, 
+    handleFileUpload = () => {}, 
+    startAiAnalysis = () => {}, 
+    aiPreview = null, 
+    scheduleDate = '', 
+    setScheduleDate = () => {}, 
+    handleApproveSummary = () => {}, 
+    handleScheduleSummary = () => {}, 
+    setCurrentStep = () => {}, 
+    setAiPreview = () => {}, 
+    selectedSpaces = [], 
+    setSelectedSpaces = () => {}, 
+    taSpaces = [],
+    isHitlEnabled = true,
+    handleRefineAi = () => {} // New prop for refining
+  } = props;
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [refineQuery, setRefineQuery] = useState('');
+  const [selectedChips, setSelectedChips] = useState([]);
+
+  const refineOptions = [
+    { id: 'shorter', label: '✨ Ngắn gọn', prompt: 'Làm ngắn gọn lại, súc tích hơn.' },
+    { id: 'funny', label: '✨ Hài hước', prompt: 'Viết lại với giọng văn hài hước, năng lượng hơn.' },
+    { id: 'professional', label: '✨ Chuyên nghiệp', prompt: 'Viết lại chuyên nghiệp và trang trọng hơn.' },
+    { id: 'emoji', label: '✨ Thêm Emoji', prompt: 'Bổ sung thêm các emoji phù hợp để bài viết sinh động.' },
+    { id: 'structure', label: '✨ Chia mục rõ ràng', prompt: 'Sử dụng bullet points và tiêu đề để chia bố cục rõ ràng hơn.' },
+  ];
+
+  const toggleChip = (chipId) => {
+    setSelectedChips(prev => 
+      prev.includes(chipId) ? prev.filter(id => id !== chipId) : [...prev, chipId]
+    );
+  };
+
+  const handleApplyRefine = () => {
+    const chipPrompts = selectedChips.map(id => refineOptions.find(opt => opt.id === id).prompt).join(' ');
+    const finalInstruction = `${chipPrompts} ${refineQuery}`.trim();
+    if (finalInstruction) {
+      handleRefineAi(finalInstruction);
+      setRefineQuery('');
+      setSelectedChips([]);
+    }
+  };
+
+  const toggleSpace = (id) => {
+    if (typeof setSelectedSpaces === 'function') {
+      setSelectedSpaces(prev => {
+        const current = Array.isArray(prev) ? prev : [];
+        return current.includes(id) ? current.filter(item => item !== id) : [...current, id];
+      });
+    }
+  };
+
+  const renderMarkdown = (content) => {
+    return { __html: marked.parse(content || '') };
+  };
+
   return (
-    <div className="ta-card" style={{ border: 'none', background: 'transparent' }}>
-      {/* Premium Step Indicator */}
-      <div style={{ 
-        display: 'flex', 
-        background: 'var(--ta-bg2)', 
-        borderRadius: '16px', 
-        padding: '8px', 
-        marginBottom: '30px',
-        border: '1px solid var(--ta-border)',
-        boxShadow: '0 4px 15px rgba(0,0,0,0.1)'
-      }}>
-        {['Tài liệu nguồn', 'AI Phân tích', 'Phê duyệt & Đăng'].map((step, idx) => {
-          const isActive = currentStep === idx + 1;
-          const isDone = currentStep > idx + 1;
-          return (
-            <div key={idx} style={{
-              flex: 1, 
-              padding: '12px 16px', 
-              textAlign: 'center', 
-              fontSize: '13px', 
-              borderRadius: '12px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '10px',
-              background: isActive ? 'linear-gradient(135deg, var(--ta-accent), #8b5cf6)' : 'transparent',
-              color: isActive ? 'white' : (isDone ? 'var(--ta-accent)' : 'var(--ta-text3)'),
-              fontWeight: isActive ? 700 : 500,
-              transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-              cursor: isDone ? 'pointer' : 'default',
-              boxShadow: isActive ? '0 4px 12px rgba(124, 58, 237, 0.3)' : 'none'
-            }} onClick={() => isDone && setCurrentStep(idx + 1)}>
-              <span style={{ 
-                width: '24px', 
-                height: '24px', 
-                borderRadius: '50%', 
-                background: isActive ? 'rgba(255,255,255,0.2)' : (isDone ? 'var(--ta-accent-bg)' : 'rgba(255,255,255,0.05)'),
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '11px'
-              }}>
-                {isDone ? <FiCheckCircle size={14} /> : idx + 1}
-              </span>
-              <span className="hide-mobile">{step}</span>
-            </div>
-          );
-        })}
-      </div>
-      
-      <div className="animate-fade">
-        {currentStep === 1 && (
-          <div className="ta-card" style={{ padding: '40px', background: 'var(--ta-bg2)', border: '1px solid var(--ta-border)' }}>
-            <div 
-              className="upload-zone-premium" 
-              style={{ 
-                border: '2px dashed var(--ta-border2)', 
-                background: uploadedFile ? 'rgba(16, 185, 129, 0.05)' : 'rgba(255,255,255,0.02)', 
-                borderRadius: '24px',
-                padding: '60px 40px',
-                display: 'flex', 
-                flexDirection: 'column', 
-                justifyContent: 'center', 
-                alignItems: 'center', 
-                cursor: 'pointer',
-                transition: '0.3s'
-              }}
-              onClick={() => document.getElementById('slide-upload').click()}
-            >
-              <div style={{ 
-                width: '80px', 
-                height: '80px', 
-                borderRadius: '50%', 
-                background: 'var(--ta-accent-bg)', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center',
-                marginBottom: '20px',
-                color: 'var(--ta-accent)',
-                boxShadow: '0 0 0 10px rgba(124, 58, 237, 0.05)'
-              }}>
-                {uploading ? <FiRefreshCw className="spin" size={32} /> : 
-                 uploadedFile ? <FiCheckCircle size={32} /> :
-                 <FiUploadCloud size={32} />}
+    <div className="animate-fade">
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '24px', alignItems: 'start' }}>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div className="ta-card-premium" style={{ padding: '24px' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: 700, marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Icons.FiSettings color="var(--primary)" /> Cấu hình đăng bài
+            </h3>
+
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', fontFamily: 'inherit' }}>
+                1. Chọn các lớp nhận bài ({selectedSpaces?.length || 0})
+              </label>
+              <div style={{ maxHeight: '150px', overflowY: 'auto', background: 'var(--bg-surface-tertiary)', borderRadius: '12px', padding: '8px', border: '1px solid var(--border-primary)' }}>
+                {Array.isArray(taSpaces) && taSpaces.map(space => (
+                  <label key={space.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 12px', cursor: 'pointer', borderRadius: '8px', transition: '0.2s', fontFamily: 'inherit' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={selectedSpaces?.includes(space.id)} 
+                      onChange={() => toggleSpace(space.id)}
+                      style={{ width: '16px', height: '16px' }}
+                    />
+                    <span style={{ fontSize: '14px' }}>{space.name}</span>
+                  </label>
+                ))}
               </div>
-              
-              <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '8px' }}>
-                {uploadedFile ? uploadedFile.filename : 'Tải lên Slide bài giảng'}
-              </h3>
-              <p style={{ fontSize: '14px', color: 'var(--ta-text3)', textAlign: 'center', maxWidth: '400px' }}>
-                {uploadedFile ? 'Tệp đã sẵn sàng để phân tích' : 'Kéo thả hoặc nhấn để chọn tệp bài giảng (PDF, PNG, JPG). AI sẽ kết hợp nội dung Slide với Chat Log để tạo bản tóm tắt hoàn chỉnh.'}
-              </p>
-              <input type="file" style={{ display: 'none' }} id="slide-upload" accept=".pdf,image/*" onChange={handleFileUpload} />
             </div>
 
-            <div style={{ marginTop: '40px', textAlign: 'center' }}>
-              <button 
-                className="vibrant-btn" 
-                style={{ 
-                  minWidth: '320px', 
-                  height: '54px', 
-                  fontSize: '15px', 
-                  borderRadius: '16px',
-                  background: !uploadedFile ? 'linear-gradient(135deg, var(--ta-blue), #3b82f6)' : 'linear-gradient(135deg, var(--ta-accent), #8b5cf6)'
-                }}
-                onClick={startAiAnalysis}
-                disabled={uploading}
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', fontFamily: 'inherit' }}>
+                2. Lịch đăng (Để trống nếu muốn gửi ngay)
+              </label>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <Icons.FiClock size={16} color="var(--text-muted)" style={{ position: 'absolute', left: '12px' }} />
+                <input 
+                  type="datetime-local" 
+                  className="ta-input" 
+                  style={{ paddingLeft: '40px', fontFamily: 'inherit' }}
+                  value={scheduleDate || ''}
+                  onChange={(e) => setScheduleDate(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', fontFamily: 'inherit' }}>
+                3. Tài liệu buổi học (Tùy chọn)
+              </label>
+              <div 
+                style={{ border: '2px dashed var(--border-primary)', borderRadius: '12px', padding: '20px', textAlign: 'center', background: 'var(--bg-surface)', cursor: 'pointer' }}
+                onClick={() => document.getElementById('slide-upload').click()}
               >
-                {uploading ? <><FiRefreshCw className="spin" style={{ marginRight: '10px' }} /> Đang xử lý...</> : 
-                 uploadedFile ? <><FiCpu style={{ marginRight: '10px' }} /> Phân tích Slide & Hội thoại</> : 
-                 <><FiMessageSquare style={{ marginRight: '10px' }} /> Tóm tắt từ Hội thoại thực tế</>}
-                <FiChevronRight style={{ marginLeft: '10px' }} />
-              </button>
-              
-              {!uploadedFile && (
-                <p style={{ fontSize: '12px', color: 'var(--ta-text3)', marginTop: '16px' }}>
-                  <FiInfo style={{ marginRight: '4px' }} /> Bạn có thể tải lên Slide để AI phân tích sâu hơn, hoặc tóm tắt ngay từ lịch sử chat.
-                </p>
+                <Icons.FiUploadCloud size={24} color="var(--primary)" style={{ margin: '0 auto 8px' }} />
+                <div style={{ fontSize: '14px', fontWeight: 600, fontFamily: 'inherit' }}>Tải Slide (PDF/Ảnh)</div>
+                <input type="file" style={{ display: 'none' }} id="slide-upload" accept=".pdf,image/*" onChange={handleFileUpload} />
+              </div>
+              {uploadedFile && (
+                <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', background: 'var(--ta-green-bg)', borderRadius: '8px' }}>
+                  <Icons.FiFileText color="var(--ta-green)" size={14} />
+                  <span style={{ fontSize: '13px', fontFamily: 'inherit' }}>{uploadedFile.filename}</span>
+                </div>
               )}
             </div>
+
+            <button 
+              className="vibrant-btn" 
+              style={{ width: '100%', fontFamily: 'inherit' }}
+              onClick={startAiAnalysis}
+              disabled={uploading || (selectedSpaces?.length || 0) === 0}
+            >
+              {uploading ? <Icons.FiRefreshCw className="spin" /> : <Icons.FiZap />}
+              <span>
+                {isHitlEnabled 
+                  ? (scheduleDate ? 'Tạo phác thảo & Đặt lịch' : 'Tạo phác thảo')
+                  : (scheduleDate ? 'Tạo phác thảo & Đặt lịch' : 'Tạo phác thảo rồi gửi ngay')
+                }
+              </span>
+            </button>
           </div>
-        )}
+        </div>
 
-        {currentStep === 2 && (
-          <div className="ta-card" style={{ padding: '80px 40px', background: 'var(--ta-bg2)', textAlign: 'center', border: '1px solid var(--ta-border)' }}>
-            <div style={{ position: 'relative', width: '120px', height: '120px', margin: '0 auto 30px' }}>
-               <div className="pulse-ring" style={{ position: 'absolute', inset: 0, border: '2px solid var(--ta-accent)', borderRadius: '50%', opacity: 0.3 }}></div>
-               <div style={{ 
-                 position: 'absolute', inset: '10px', 
-                 background: 'var(--ta-accent-bg)', borderRadius: '50%', 
-                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                 color: 'var(--ta-accent)'
-               }}>
-                 <FiCpu className="spin-slow" size={48} />
-               </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', position: 'relative' }}>
+          <div className="ta-card-premium" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 140px)' }}>
+            <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border-primary)', background: 'var(--bg-surface-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Icons.FiFileText color="var(--primary)" />
+                <h3 style={{ fontSize: '15px', fontWeight: 700, fontFamily: 'inherit' }}>Nội dung Recap</h3>
+              </div>
+              {aiPreview && !uploading && (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button className="ta-btn" style={{ padding: '4px 12px' }} onClick={() => setIsEditing(!isEditing)}>
+                    {isEditing ? <><Icons.FiEye size={14} /> Xem</> : <><Icons.FiEdit3 size={14} /> Sửa nhanh</>}
+                  </button>
+                </div>
+              )}
             </div>
-            <h2 style={{ fontSize: '24px', fontWeight: 800, marginBottom: '12px' }}>AI đang "thẩm thấu" kiến thức...</h2>
-            <p style={{ color: 'var(--ta-text3)', fontSize: '16px', maxWidth: '500px', margin: '0 auto' }}>
-              Trợ lý AI đang kết hợp nội dung Slide bài giảng cùng với các thảo luận quan trọng trong Chat Log để soạn thảo bản Recap chất lượng nhất.
-            </p>
-          </div>
-        )}
 
-        {currentStep === 3 && aiPreview && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '24px' }}>
-            <div className="ta-card" style={{ padding: '30px', background: 'var(--ta-bg2)', border: '1px solid var(--ta-border)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-                <label style={{ fontSize: '11px', fontWeight: 800, color: 'var(--ta-accent)', textTransform: 'uppercase', letterSpacing: '1.5px' }}>
-                  Nội dung bản thảo tóm tắt
-                </label>
-                <span style={{ fontSize: '11px', color: 'var(--ta-text3)' }}>{aiPreview.content?.length || 0} ký tự</span>
+            <div style={{ flex: 1, padding: '24px', position: 'relative', overflowY: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              {uploading && (
+                <div className="processing-overlay">
+                  <Icons.FiCpu className="spin" size={48} color="var(--primary)" />
+                  <h4 style={{ marginTop: '16px', fontWeight: 700 }}>AI đang xử lý yêu cầu...</h4>
+                  <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Bản thảo sẽ được cập nhật trong giây lát</p>
+                </div>
+              )}
+
+              <div className={`markdown-content-area ${uploading ? 'blur-content' : ''}`} style={{ flex: 1, height: 'auto' }}>
+                {currentStep === 1 && !aiPreview && (
+                  <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontFamily: 'inherit' }}>
+                    <p>Nhập thông tin bên trái để bắt đầu</p>
+                  </div>
+                )}
+                
+                {aiPreview && (
+                  isEditing ? (
+                    <textarea 
+                      style={{ width: '100%', height: '100%', border: 'none', resize: 'none', outline: 'none', background: 'transparent', color: 'var(--text-primary)', fontSize: '15px', lineHeight: '1.8', fontFamily: 'inherit' }}
+                      value={aiPreview?.content || ''}
+                      onChange={(e) => { if (typeof setAiPreview === 'function') setAiPreview({ ...aiPreview, content: e.target.value }); }}
+                    />
+                  ) : (
+                    <div 
+                      dangerouslySetInnerHTML={renderMarkdown(aiPreview?.content)}
+                    />
+                  )
+                )}
               </div>
-              <textarea 
-                className="ta-input" 
-                style={{ 
-                  width: '100%', 
-                  minHeight: '500px', 
-                  padding: '24px', 
-                  lineHeight: '1.8', 
-                  fontSize: '15px',
-                  background: 'var(--ta-bg3)',
-                  border: '1px solid var(--ta-border2)',
-                  borderRadius: '16px',
-                  color: 'var(--ta-text2)'
-                }}
-                value={aiPreview.content}
-                onChange={(e) => setAiPreview({ ...aiPreview, content: e.target.value })}
-                placeholder="Nội dung tóm tắt sẽ xuất hiện ở đây..."
-              />
             </div>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              <div className="ta-card" style={{ padding: '24px', background: 'var(--ta-bg2)', border: '1px solid var(--ta-border)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
-                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--ta-green)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <FiCheckSquare />
-                  </div>
-                  <h4 style={{ fontSize: '14px', fontWeight: 700 }}>Quyết định lớp học</h4>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {aiPreview.metadata?.decisions?.length > 0 ? aiPreview.metadata.decisions.map((d, i) => (
-                    <div key={i} style={{ 
-                      fontSize: '13px', 
-                      padding: '12px', 
-                      background: 'var(--ta-bg3)', 
-                      borderRadius: '10px',
-                      borderLeft: '3px solid var(--ta-green)',
-                      color: 'var(--ta-text2)'
-                    }}>
-                      {d.content}
-                    </div>
-                  )) : (
-                    <div style={{ textAlign: 'center', padding: '20px', border: '1px dashed var(--ta-border)', borderRadius: '10px', color: 'var(--ta-text3)', fontSize: '12px' }}>
-                      Không ghi nhận quyết định mới
-                    </div>
-                  )}
-                </div>
-              </div>
 
-              <div className="ta-card" style={{ padding: '24px', background: 'var(--ta-bg2)', border: '1px solid var(--ta-border)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
-                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(124, 58, 237, 0.1)', color: 'var(--ta-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <FiList />
-                  </div>
-                  <h4 style={{ fontSize: '14px', fontWeight: 700 }}>Phân công công việc</h4>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {aiPreview.metadata?.tasks?.length > 0 ? aiPreview.metadata.tasks.map((t, i) => (
-                    <div key={i} style={{ 
-                      fontSize: '13px', 
-                      padding: '12px', 
-                      background: 'var(--ta-bg3)', 
-                      borderRadius: '10px',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }}>
-                      <span style={{ color: 'var(--ta-text2)' }}>{t.task}</span>
-                      <span style={{ 
-                        fontSize: '11px', 
-                        padding: '2px 8px', 
-                        background: 'var(--ta-accent-bg)', 
-                        color: 'var(--ta-accent)', 
-                        borderRadius: '4px',
-                        fontWeight: 700 
-                      }}>@{t.assignee}</span>
-                    </div>
-                  )) : (
-                    <div style={{ textAlign: 'center', padding: '20px', border: '1px dashed var(--ta-border)', borderRadius: '10px', color: 'var(--ta-text3)', fontSize: '12px' }}>
-                      Không có task mới được giao
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="ta-card" style={{ padding: '24px', background: 'linear-gradient(135deg, var(--ta-bg2), var(--ta-bg3))', border: '1px solid var(--ta-accent)33' }}>
-                 <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <FiClock style={{ color: 'var(--ta-accent)' }} /> Tùy chọn thời gian gửi
-                 </div>
-                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div 
-                      onClick={() => setSendTime('now')}
-                      style={{ 
-                        padding: '12px 16px', 
-                        borderRadius: '12px', 
-                        background: sendTime === 'now' ? 'var(--ta-accent-bg)' : 'transparent',
-                        border: `1px solid ${sendTime === 'now' ? 'var(--ta-accent)' : 'var(--ta-border)'}`,
-                        cursor: 'pointer',
-                        transition: '0.2s',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '12px'
-                      }}
-                    >
-                      <div style={{ width: '18px', height: '18px', borderRadius: '50%', border: '2px solid var(--ta-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                         {sendTime === 'now' && <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--ta-accent)' }}></div>}
-                      </div>
-                      <span style={{ fontSize: '13px', fontWeight: sendTime === 'now' ? 700 : 500 }}>Gửi ngay bây giờ</span>
+            {(aiPreview) && (
+              <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border-primary)', background: 'var(--bg-surface-tertiary)', flexShrink: 0 }}>
+                {/* Refine Section */}
+                {!uploading && (
+                  <div style={{ marginBottom: '16px', padding: '12px 16px', background: 'var(--bg-surface)', borderRadius: '12px', border: '1px solid var(--border-primary)' }}>
+                    <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>✨ Tinh chỉnh nhanh cùng AI</div>
+                    
+                    <div className="refine-chips-container" style={{ marginBottom: '12px' }}>
+                      {refineOptions.map(opt => (
+                        <button 
+                          key={opt.id} 
+                          className={`refine-chip ${selectedChips.includes(opt.id) ? 'active' : ''}`}
+                          onClick={() => toggleChip(opt.id)}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
                     </div>
 
-                    <div 
-                      onClick={() => setSendTime('schedule')}
-                      style={{ 
-                        padding: '12px 16px', 
-                        borderRadius: '12px', 
-                        background: sendTime === 'schedule' ? 'var(--ta-accent-bg)' : 'transparent',
-                        border: `1px solid ${sendTime === 'schedule' ? 'var(--ta-accent)' : 'var(--ta-border)'}`,
-                        cursor: 'pointer',
-                        transition: '0.2s',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '12px'
-                      }}
-                    >
-                      <div style={{ width: '18px', height: '18px', borderRadius: '50%', border: '2px solid var(--ta-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                         {sendTime === 'schedule' && <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--ta-accent)' }}></div>}
-                      </div>
-                      <span style={{ fontSize: '13px', fontWeight: sendTime === 'schedule' ? 700 : 500 }}>Đặt lịch gửi</span>
-                    </div>
-
-                    {sendTime === 'schedule' && (
-                      <div className="animate-fade" style={{ marginTop: '8px' }}>
-                        <input 
-                          type="datetime-local" 
-                          className="ta-input" 
-                          style={{ width: '100%', padding: '12px', borderRadius: '10px', fontSize: '13px' }}
-                          value={scheduleDate}
-                          onChange={(e) => setScheduleDate(e.target.value)}
-                        />
-                      </div>
-                    )}
-                 </div>
-
-                 <div style={{ marginTop: '30px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {sendTime === 'now' ? (
-                      <button className="vibrant-btn" style={{ height: '50px', borderRadius: '12px', fontSize: '14px' }} onClick={() => handleApproveSummary(aiPreview.id, aiPreview.space_id)}>
-                        Phê duyệt & Đăng ngay <FiSend style={{ marginLeft: '8px' }} />
-                      </button>
-                    ) : (
-                      <button className="vibrant-btn" style={{ 
-                        height: '50px', 
-                        borderRadius: '12px', 
-                        fontSize: '14px',
-                        background: 'linear-gradient(135deg, var(--ta-blue), var(--ta-purple))' 
-                      }} 
-                        onClick={() => handleScheduleSummary(aiPreview.id, aiPreview.space_id, scheduleDate)}
-                        disabled={!scheduleDate}
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <input 
+                        type="text" className="ta-input" 
+                        style={{ padding: '8px 12px', fontSize: '13px' }}
+                        placeholder="Yêu cầu riêng (vd: Nhấn mạnh deadline...)" 
+                        value={refineQuery} onChange={(e) => setRefineQuery(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleApplyRefine(); }}
+                      />
+                      <button 
+                        className="vibrant-btn" 
+                        style={{ padding: '0 12px', minWidth: 'auto', height: '38px' }}
+                        disabled={selectedChips.length === 0 && !refineQuery}
+                        onClick={handleApplyRefine}
                       >
-                        Xác nhận đặt lịch <FiClock style={{ marginLeft: '8px' }} />
+                        <Icons.FiCheck size={18} />
                       </button>
-                    )}
-                    <button className="ta-btn" style={{ height: '44px', borderRadius: '12px', fontSize: '13px', background: 'transparent', border: '1px solid var(--ta-border)' }} onClick={() => setCurrentStep(1)}>
-                      Hủy và làm lại
-                    </button>
-                 </div>
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                  {!uploading && (
+                    <>
+                      <button className="ta-btn" style={{ padding: '8px 16px' }} onClick={() => { if (typeof setAiPreview === 'function') setAiPreview(null); if (typeof setCurrentStep === 'function') setCurrentStep(1); }}>Hủy</button>
+                      <button className="vibrant-btn" 
+                        style={{ padding: '8px 20px' }}
+                        onClick={() => {
+                          if (aiPreview && aiPreview.id) {
+                            if (!scheduleDate) handleApproveSummary(aiPreview.id, aiPreview.space_id);
+                            else handleScheduleSummary(aiPreview.id, aiPreview.space_id, scheduleDate);
+                          }
+                        }}
+                      >
+                        <Icons.FiSend /> {scheduleDate ? 'Đặt lịch' : 'Gửi ngay'}
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
-        )}
+        </div>
+
       </div>
     </div>
   );
