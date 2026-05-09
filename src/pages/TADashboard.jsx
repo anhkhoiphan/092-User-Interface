@@ -3,10 +3,10 @@ import { useSelector } from 'react-redux';
 import { 
   FiAlertCircle, FiRefreshCw, FiFileText, FiActivity, FiSettings, 
   FiTrendingUp, FiSend, FiBarChart2, FiCpu, FiClock, FiTrash2, 
-  FiLayers, FiFilter, FiEdit3, FiMessageSquare, FiUser, FiCheckCircle, FiCheck, FiX, FiChevronRight, FiCheckSquare, FiZap, FiRotateCcw, FiSave, FiChevronDown
+  FiLayers, FiFilter, FiEdit3, FiMessageSquare, FiUser, FiCheckCircle, FiCheck, FiX, FiChevronRight, FiCheckSquare, FiZap, FiRotateCcw, FiSave, FiChevronDown, FiGlobe, FiSmile, FiBriefcase
 } from 'react-icons/fi';
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
 import taService from '../services/ta.service';
 
@@ -71,20 +71,39 @@ const TADashboard = () => {
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [currentContext, setCurrentContext] = useState(null);
 
-  // --- AI Config Logic ---
+  // --- NEW HIERARCHICAL AI CONFIG LOGIC ---
   const DEFAULT_CONFIG = {
-    recap: { pronouns: "mình - các bạn", tone: "nhiệt huyết", structure: ["Nội dung chính"], useEmoji: true },
-    announcement: { pronouns: "mình - các bạn", tone: "chuyên nghiệp", useEmoji: true },
-    isHitlEnabled: true,
-    instruction: "Trả lời ngắn gọn, súc tích, sử dụng bullet points để dễ đọc. Luôn có câu chào và câu kết thân thiện."
+    global: {
+      pronouns: "mình - các bạn",
+      instruction: "Luôn thân thiện, chuyên nghiệp, súc tích. Sử dụng bullet points cho các danh sách.",
+      language: "Tiếng Việt"
+    },
+    dm: {
+      tone: "helpful",
+      length: "vừa phải",
+      goal: "hỏi thăm",
+      instruction: ""
+    },
+    recap: {
+      tone: "nhiệt huyết",
+      structure: "bullet points",
+      highlight: "nội dung chính",
+      instruction: ""
+    },
+    announcement: {
+      tone: "chuyên nghiệp",
+      urgency: "bình thường",
+      instruction: ""
+    },
+    isHitlEnabled: true
   };
 
   const [aiConfig, setAiConfig] = useState(() => {
     try {
-      const saved = localStorage.getItem('ta_ai_config_v6'); 
+      const saved = localStorage.getItem('ta_ai_config_v7'); 
       if (!saved) return DEFAULT_CONFIG;
       const parsed = JSON.parse(saved);
-      return parsed?.recap ? parsed : DEFAULT_CONFIG;
+      return parsed?.global ? parsed : DEFAULT_CONFIG;
     } catch (e) { return DEFAULT_CONFIG; }
   });
 
@@ -92,20 +111,40 @@ const TADashboard = () => {
 
   const handleSaveConfig = () => {
     setAiConfig(configDraft);
-    localStorage.setItem('ta_ai_config_v6', JSON.stringify(configDraft));
-    addToast('Đã áp dụng cấu hình AI mới!');
+    localStorage.setItem('ta_ai_config_v7', JSON.stringify(configDraft));
+    addToast('Đã áp dụng cấu hình AI đa tầng mới!');
   };
 
   const buildRecapPrompt = () => {
-    const r = aiConfig?.recap || DEFAULT_CONFIG.recap;
-    const inst = aiConfig?.instruction || DEFAULT_CONFIG.instruction;
-    return `Hãy đóng vai một Trợ giảng (TA) ${r.tone}. Xưng hô "${r.pronouns}". Cấu trúc: ${(r.structure || []).join(', ')}. Hướng dẫn bổ sung: ${inst}`;
+    const g = aiConfig.global;
+    const r = aiConfig.recap;
+    return `[CẤU HÌNH CHUNG]
+Xưng hô: ${g.pronouns}
+Ngôn ngữ: ${g.language}
+Nguyên tắc: ${g.instruction}
+
+[CẤU HÌNH RECAP]
+Giọng văn: ${r.tone}
+Bố cục: ${r.structure}
+Tập trung vào: ${r.highlight}
+Yêu cầu riêng: ${r.instruction}
+
+Hãy soạn bản Recap bài giảng dựa trên hội thoại/tài liệu lớp học.`;
   };
 
   const buildAnnouncementPrompt = (purpose, context) => {
-    const a = aiConfig?.announcement || DEFAULT_CONFIG.announcement;
-    const inst = aiConfig?.instruction || DEFAULT_CONFIG.instruction;
-    return `Thông báo: ${purpose}. Ngữ cảnh: ${context}. Xưng hô: "${a.pronouns}". Tone: ${a.tone}. Hướng dẫn bổ sung: ${inst}`;
+    const g = aiConfig.global;
+    const a = aiConfig.announcement;
+    return `[CẤU HÌNH CHUNG]
+Xưng hô: ${g.pronouns}
+Nguyên tắc: ${g.instruction}
+
+[CẤU HÌNH THÔNG BÁO]
+Giọng văn: ${a.tone}
+Mức độ khẩn cấp: ${a.urgency}
+Yêu cầu riêng: ${a.instruction}
+
+Nhiệm vụ: Soạn thông báo "${purpose}" với nội dung chính: ${context}`;
   };
 
   const fetchData = async () => {
@@ -164,15 +203,11 @@ const TADashboard = () => {
   const handleApproveSummary = async (draftId, spaceId) => {
     setIsSending(true);
     try {
-      // 1. Cập nhật nội dung bản thảo gốc (phòng trường hợp TA sửa tay)
       if (aiPreview?.id === draftId) {
         await taService.updateSummaryDraft(draftId, spaceId, { content: aiPreview.content });
       }
-      
-      // 2. Duyệt bản thảo cho lớp hiện tại
       const res = await taService.approveSummary(draftId, spaceId);
       
-      // 3. BROADCAST: Gửi cho các lớp khác nếu có trong danh sách selected
       if (res.success && selectedSpaces.length > 1) {
         const otherSpaces = selectedSpaces.filter(id => id !== spaceId);
         await Promise.all(otherSpaces.map(async (sid) => {
@@ -202,7 +237,7 @@ const TADashboard = () => {
   const handleScheduleSummary = async (draftId, spaceId, scheduledAt) => {
     setIsSending(true);
     try {
-      const res = await taService.scheduleSummary(draftId, spaceId, new Date(scheduledAt).toISOString());
+      const res = await taService.scheduleSummary(draftId, spaceId, new Date(scheduledAt).toISOString(), user?.id);
       if (res.success) {
         addToast('Đã đặt lịch!');
         fetchData();
@@ -212,7 +247,6 @@ const TADashboard = () => {
     } catch (error) {} finally { setIsSending(false); }
   };
 
-  // --- Scheduled Queue Actions ---
   const handleEditScheduled = (item) => {
     setAiPreview(item);
     if (item.draft_type === 'lesson_recap') {
@@ -221,7 +255,6 @@ const TADashboard = () => {
     } else {
       setActiveTab('announcements');
     }
-    // Lăn lên đầu để sửa
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -290,7 +323,7 @@ const TADashboard = () => {
           id: snapshotId, 
           space_id: spaceId, 
           ...res.data,
-          aiConfig: aiConfig,
+          aiConfig: aiConfig, // Official config
           taName: user?.display_name || 'Trợ giảng'
         });
         setIsComposeOpen(true);
@@ -302,13 +335,13 @@ const TADashboard = () => {
     if (!currentContext) return;
     try {
       setLoading(true);
-      const res = await taService.sendSmartMessage(currentContext.spaceId, {
+      const res = await taService.sendSmartMessage(currentContext.space_id, {
         taId: user?.id, studentId: currentContext.student_info?.id,
-        content: message, snapshotId: currentContext.id, spaceId: currentContext.spaceId
+        content: message, snapshotId: currentContext.id, spaceId: currentContext.space_id
       });
       if (res.success) {
         setIsComposeOpen(false);
-        handleResolveAlert(currentContext.id, currentContext.spaceId);
+        handleResolveAlert(currentContext.id, currentContext.space_id);
         addToast('Đã gửi tin nhắn!');
       }
     } catch (error) {} finally { setLoading(false); }
@@ -590,56 +623,121 @@ const TADashboard = () => {
           )}
 
           {activeTab === 'settings' && (
-            <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '24px', padding: '24px 0', overflowY: 'auto', maxHeight: 'calc(100vh - 120px)' }}>
+            <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '32px', padding: '24px 0', overflowY: 'auto', maxHeight: 'calc(100vh - 120px)' }}>
+              
+              {/* 1. Cấu hình Chung */}
               <div className="ta-card-premium">
-                <div className="card-head"><h3>Cấu hình Cơ chế Gửi</h3></div>
-                <div className="ta-card-body" style={{ padding: '24px' }}>
-                  <label className="flex items-center gap-3 cursor-pointer p-4 bg-surface-tertiary rounded-xl border border-primary/10 hover:bg-surface-secondary transition-colors">
-                    <input type="checkbox" className="w-5 h-5 accent-primary" checked={configDraft.isHitlEnabled} onChange={(e) => setConfigDraft({...configDraft, isHitlEnabled: e.target.checked})} />
-                    <div>
-                      <div style={{ fontSize: '14px', fontWeight: 600 }}>Yêu cầu phê duyệt trước khi gửi (HITL)</div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>AI sẽ tạo bản nháp và chờ bạn kiểm tra lại trước khi đăng vào lớp.</div>
-                    </div>
+                <div className="card-head" style={{ background: 'var(--bg-surface-secondary)', borderLeft: '4px solid var(--primary)' }}>
+                  <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><FiGlobe /> Cấu hình Toàn cục (Global)</h3>
+                </div>
+                <div className="ta-card-body" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <div className="config-group">
+                    <label className="config-label">Xưng hô mặc định</label>
+                    <input type="text" className="ta-input" placeholder="VD: thầy - em, mình - các bạn..." value={configDraft.global.pronouns} onChange={(e) => setConfigDraft({...configDraft, global: {...configDraft.global, pronouns: e.target.value}})} />
+                  </div>
+                  <div className="config-group">
+                    <label className="config-label">Ngôn ngữ phản hồi</label>
+                    <select className="modern-select" style={{ width: '100%' }} value={configDraft.global.language} onChange={(e) => setConfigDraft({...configDraft, global: {...configDraft.global, language: e.target.value}})}>
+                      <option value="Tiếng Việt">Tiếng Việt</option>
+                      <option value="Tiếng Anh">Tiếng Anh</option>
+                      <option value="Song ngữ">Song ngữ (Việt - Anh)</option>
+                    </select>
+                  </div>
+                  <div className="config-group">
+                    <label className="config-label">Nguyên tắc cốt lõi (Global Instruction)</label>
+                    <textarea className="ta-input" style={{ minHeight: '80px' }} placeholder="Những điều AI luôn phải tuân theo..." value={configDraft.global.instruction} onChange={(e) => setConfigDraft({...configDraft, global: {...configDraft.global, instruction: e.target.value}})} />
+                  </div>
+                  <label className="flex items-center gap-3 cursor-pointer p-3 bg-surface-tertiary rounded-xl border border-primary/10">
+                    <input type="checkbox" className="w-4 h-4 accent-primary" checked={configDraft.isHitlEnabled} onChange={(e) => setConfigDraft({...configDraft, isHitlEnabled: e.target.checked})} />
+                    <span style={{ fontSize: '13px', fontWeight: 600 }}>Bật chế độ phê duyệt (HITL) cho tất cả</span>
                   </label>
                 </div>
               </div>
 
+              {/* 2. Cấu hình DM */}
               <div className="ta-card-premium">
-                <div className="card-head"><h3>Hướng dẫn trả lời AI (Custom Instruction)</h3></div>
-                <div className="ta-card-body" style={{ padding: '24px' }}>
-                  <textarea className="ta-input" style={{ minHeight: '160px', resize: 'vertical', lineHeight: '1.6', fontSize: '14px' }} placeholder="Ví dụ: Hãy trả lời ngắn gọn..." value={configDraft.instruction} onChange={(e) => setConfigDraft({...configDraft, instruction: e.target.value})} />
+                <div className="card-head" style={{ background: 'var(--bg-surface-secondary)', borderLeft: '4px solid var(--ta-blue)' }}>
+                  <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><FiMessageSquare /> Cấu hình Soạn tin DM</h3>
+                </div>
+                <div className="ta-card-body" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div className="config-group">
+                      <label className="config-label">Mục tiêu mặc định</label>
+                      <select className="modern-select" style={{ width: '100%' }} value={configDraft.dm.goal} onChange={(e) => setConfigDraft({...configDraft, dm: {...configDraft.dm, goal: e.target.value}})}>
+                        <option value="hỏi thăm">Hỏi thăm & hỗ trợ</option>
+                        <option value="nhắc nhở">Nhắc nhở bài tập</option>
+                        <option value="cảnh báo">Cảnh báo rủi ro</option>
+                      </select>
+                    </div>
+                    <div className="config-group">
+                      <label className="config-label">Độ dài tin nhắn</label>
+                      <select className="modern-select" style={{ width: '100%' }} value={configDraft.dm.length} onChange={(e) => setConfigDraft({...configDraft, dm: {...configDraft.dm, length: e.target.value}})}>
+                        <option value="cực ngắn">Cực ngắn (1-2 câu)</option>
+                        <option value="vừa phải">Vừa phải (đầy đủ ý)</option>
+                        <option value="tâm tình">Tâm tình (dài và chi tiết)</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="config-group">
+                    <label className="config-label">Chỉ dẫn riêng cho DM</label>
+                    <textarea className="ta-input" style={{ minHeight: '80px' }} placeholder="VD: Khi nhắc bài tập, hãy đính kèm link tài liệu..." value={configDraft.dm.instruction} onChange={(e) => setConfigDraft({...configDraft, dm: {...configDraft.dm, instruction: e.target.value}})} />
+                  </div>
                 </div>
               </div>
 
+              {/* 3. Cấu hình Recap */}
               <div className="ta-card-premium">
-                <div className="card-head"><h3>Cấu hình Recap AI</h3></div>
+                <div className="card-head" style={{ background: 'var(--bg-surface-secondary)', borderLeft: '4px solid var(--ta-amber)' }}>
+                  <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><FiFileText /> Cấu hình Recap AI</h3>
+                </div>
                 <div className="ta-card-body" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  <div className="config-group">
-                    <label className="config-label">Xưng hô (Recap)</label>
-                    <input type="text" className="ta-input" value={configDraft.recap.pronouns} onChange={(e) => setConfigDraft({...configDraft, recap: {...configDraft.recap, pronouns: e.target.value}})} />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div className="config-group">
+                      <label className="config-label">Bố cục mặc định</label>
+                      <select className="modern-select" style={{ width: '100%' }} value={configDraft.recap.structure} onChange={(e) => setConfigDraft({...configDraft, recap: {...configDraft.recap, structure: e.target.value}})}>
+                        <option value="bullet points">Gạch đầu dòng</option>
+                        <option value="paragraphs">Đoạn văn chi tiết</option>
+                        <option value="table">Dạng bảng tóm tắt</option>
+                      </select>
+                    </div>
+                    <div className="config-group">
+                      <label className="config-label">Trọng tâm Highlight</label>
+                      <select className="modern-select" style={{ width: '100%' }} value={configDraft.recap.highlight} onChange={(e) => setConfigDraft({...configDraft, recap: {...configDraft.recap, highlight: e.target.value}})}>
+                        <option value="nội dung chính">Nội dung chính</option>
+                        <option value="bài tập cần làm">Các đầu mục bài tập</option>
+                        <option value="lỗi thường gặp">Các lỗi cần tránh</option>
+                      </select>
+                    </div>
                   </div>
                   <div className="config-group">
-                    <label className="config-label">Giọng văn</label>
-                    <select className="modern-select" style={{ width: '100%' }} value={configDraft.recap.tone} onChange={(e) => setConfigDraft({...configDraft, recap: {...configDraft.recap, tone: e.target.value}})}>
-                      <option value="nhiệt huyết">Nhiệt huyết, năng lượng</option>
-                      <option value="chuyên nghiệp">Chuyên nghiệp, ngắn gọn</option>
-                      <option value="thân thiện">Thân thiện, gần gũi</option>
+                    <label className="config-label">Chỉ dẫn riêng cho Recap</label>
+                    <textarea className="ta-input" style={{ minHeight: '80px' }} placeholder="VD: Luôn thêm phần 'Tips & Tricks' cho buổi học..." value={configDraft.recap.instruction} onChange={(e) => setConfigDraft({...configDraft, recap: {...configDraft.recap, instruction: e.target.value}})} />
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. Cấu hình Thông báo */}
+              <div className="ta-card-premium">
+                <div className="card-head" style={{ background: 'var(--bg-surface-secondary)', borderLeft: '4px solid var(--ta-red)' }}>
+                  <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><FiMessageSquare /> Cấu hình Thông báo AI</h3>
+                </div>
+                <div className="ta-card-body" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <div className="config-group">
+                    <label className="config-label">Độ khẩn cấp mặc định</label>
+                    <select className="modern-select" style={{ width: '100%' }} value={configDraft.announcement.urgency} onChange={(e) => setConfigDraft({...configDraft, announcement: {...configDraft.announcement, urgency: e.target.value}})}>
+                      <option value="bình thường">Thông báo thường</option>
+                      <option value="khẩn cấp">Khẩn cấp (Yêu cầu đọc ngay)</option>
+                      <option value="tin vui">Hào hứng (Khen ngợi/Tin vui)</option>
                     </select>
                   </div>
-                </div>
-              </div>
-
-              <div className="ta-card-premium">
-                <div className="card-head"><h3>Cấu hình Thông báo AI</h3></div>
-                <div className="ta-card-body" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
                   <div className="config-group">
-                    <label className="config-label">Xưng hô (Thông báo)</label>
-                    <input type="text" className="ta-input" value={configDraft.announcement.pronouns} onChange={(e) => setConfigDraft({...configDraft, announcement: {...configDraft.announcement, pronouns: e.target.value}})} />
+                    <label className="config-label">Chỉ dẫn riêng cho Thông báo</label>
+                    <textarea className="ta-input" style={{ minHeight: '80px' }} placeholder="VD: Luôn in đậm thời gian và địa điểm học..." value={configDraft.announcement.instruction} onChange={(e) => setConfigDraft({...configDraft, announcement: {...configDraft.announcement, instruction: e.target.value}})} />
                   </div>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', paddingBottom: '40px', gap: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', paddingBottom: '60px', gap: '12px' }}>
                 <button className="ta-btn" onClick={() => setConfigDraft(aiConfig)}>Huỷ các thay đổi chưa lưu</button>
                 <button className="ta-btn" onClick={() => setConfigDraft(DEFAULT_CONFIG)}>Khôi phục mặc định</button>
               </div>
