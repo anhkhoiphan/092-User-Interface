@@ -185,6 +185,7 @@ const TADashboard = () => {
       if (res.success) {
         setAtRiskList(prev => prev.filter(item => item.id !== id));
         addToast('Đã giải quyết');
+        fetchData();
       }
     } catch (error) {}
   };
