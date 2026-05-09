@@ -262,7 +262,13 @@ const TADashboard = () => {
       setLoading(true);
       const res = await taService.getAtRiskContext(snapshotId, spaceId);
       if (res.success) {
-        setCurrentContext({ id: snapshotId, spaceId, ...res.data });
+        setCurrentContext({ 
+          id: snapshotId, 
+          space_id: spaceId, 
+          ...res.data,
+          aiConfig: aiConfig,
+          taName: user?.display_name || 'Trợ giảng'
+        });
         setIsComposeOpen(true);
       }
     } catch (error) {} finally { setLoading(false); }
