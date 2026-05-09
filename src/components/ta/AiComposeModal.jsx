@@ -19,15 +19,23 @@ const AiComposeModal = ({ isOpen, onClose, context, onSend, isSending }) => {
     if (!context?.id) return;
     setGenerating(true);
     try {
-      // Ưu tiên dùng config chính thức từ Dashboard
+      // Sử dụng config đa tầng từ Dashboard
       const config = context.aiConfig || {};
-      const finalInstruction = instruction 
-        ? `Nội dung hiện tại: ${message}. Hãy sửa lại: ${instruction}. ${config.instruction || ''}`
-        : config.instruction || '';
+      const g = config.global || {};
+      const d = config.dm || {};
+
+      const finalInstruction = `
+[MỤC TIÊU DM]: ${d.goal || 'hỏi thăm'}
+[ĐỘ DÀI]: ${d.length || 'vừa phải'}
+[NGUYÊN TẮC CHUNG]: ${g.instruction || ''}
+[CHỈ DẪN RIÊNG DM]: ${d.instruction || ''}
+${instruction ? `[YÊU CẦU HIỆU CHỈNH]: ${instruction}` : ''}
+`.trim();
 
       const res = await taService.generateSmartMessage(context.id, tone, {
         instruction: finalInstruction,
-        pronouns: config.recap?.pronouns || config.announcement?.pronouns || 'mình - bạn'
+        pronouns: g.pronouns || 'mình - bạn',
+        taName: context.taName || 'Trợ giảng'
       });
 
       if (res.success && res.data?.content) {
