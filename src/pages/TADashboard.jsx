@@ -42,7 +42,15 @@ const TADashboard = () => {
   const criticalCountArr = atRiskList.filter(i => i.level === 'critical' || (i.metadata?.score || 0) >= 5);
   const warningCountArr = atRiskList.filter(i => i.level === 'warning' || ((i.metadata?.score || 0) >= 2 && (i.metadata?.score || 0) < 5));
   const resolvedCountArr = actionLogs.filter(l => l.action_type === 'dismissed_alert' || l.action_type === 'sent_dm');
-  const timeSavedVal = actionLogs.length * 10; 
+  const timeSavedVal = actionLogs.reduce((acc, log) => {
+    switch (log.action_type) {
+      case 'lesson_recap': return acc + 30;
+      case 'announcement': return acc + 15;
+      case 'sent_dm': return acc + 10;
+      case 'dismissed_alert': return acc + 5;
+      default: return acc + 5;
+    }
+  }, 0); 
 
   const finalChartData = [
     { name: 'Nguy hiểm', value: criticalCountArr.length, color: 'var(--ta-red)' },
