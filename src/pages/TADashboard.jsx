@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { 
-  FiAlertCircle, FiCheckCircle, FiRefreshCw, 
-  FiFileText, FiActivity, FiSettings, FiTrendingUp, FiSend, FiChevronRight, FiBarChart,
-  FiCpu, FiClock, FiTrash2, FiInfo, FiLayers, FiCheckSquare, FiFilter, FiEdit3, FiMessageSquare
+  FiAlertCircle, FiRefreshCw, FiFileText, FiActivity, FiSettings, 
+  FiTrendingUp, FiSend, FiBarChart2, FiCpu, FiClock, FiTrash2, 
+  FiLayers, FiFilter, FiEdit3, FiMessageSquare, FiUser, FiCheckCircle, FiCheck, FiX, FiChevronRight, FiCheckSquare, FiZap, FiRotateCcw, FiSave, FiChevronDown
 } from 'react-icons/fi';
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend
+} from 'recharts';
 import taService from '../services/ta.service';
 
 // New TA Components
@@ -16,50 +19,93 @@ import AiComposeModal from '../components/ta/AiComposeModal';
 import './TADashboard.css';
 
 const TADashboard = () => {
-  const { spaces = [] } = useSelector((state) => state.space || {});
+  console.log("[TADashboard] Render Start");
+
   const { user } = useSelector((state) => state.auth || {});
+  const { spaces = [] } = useSelector((state) => state.space || {});
   
-  const taSpaces = useSelector(state => {
-    const allSpaces = state.space.spaces || [];
-    return allSpaces.filter(s => s.owner_id === user?.id || s.role === 'owner' || s.role === 'admin');
-  });
+  const taSpaces = Array.isArray(spaces) ? spaces.filter(s => 
+    s.owner_id === user?.id || s.role === 'owner' || s.role === 'admin'
+  ) : [];
   
   const [atRiskList, setAtRiskList] = useState([]);
   const [summaryQueue, setSummaryQueue] = useState([]);
   const [actionLogs, setActionLogs] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [isSending, setIsSending] = useState(false); 
+  const [isAnalyzing, setIsAnalyzing] = useState(false); 
   const [activeTab, setActiveTab] = useState('at-risk');
   const [selectedSpaceFilter, setSelectedSpaceFilter] = useState('all');
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   
+  // Metrics Calculation
+  const criticalCount = atRiskList.filter(i => !i.is_resolved && (i.level === 'critical' || (i.metadata?.score || 0) >= 5)).length;
+  const warningCount = atRiskList.filter(i => !i.is_resolved && (i.level === 'warning' || ((i.metadata?.score || 0) >= 2 && (i.metadata?.score || 0) < 5))).length;
+  const resolvedCount = actionLogs.filter(l => l.action_type === 'dismissed_alert' || l.action_type === 'sent_dm').length;
+  const timeSaved = actionLogs.length * 10; 
+
+  const chartData = [
+    { name: 'Nguy hiểm', value: criticalCount, color: 'var(--ta-red)' },
+    { name: 'Cảnh báo', value: warningCount, color: 'var(--ta-amber)' },
+    { name: 'Đã xử lý', value: resolvedCount, color: 'var(--ta-green)' },
+  ];
+
+  // Toast System
+  const [toasts, setToasts] = useState([]);
+  const addToast = (message, type = 'success') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
+  };
+
   // AI Flow State
   const [currentStep, setCurrentStep] = useState(1); 
   const [aiPreview, setAiPreview] = useState(null);
-  const [sendTime, setSendTime] = useState('now');
-  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleDate, setScheduleDate] = useState(''); 
   const [uploadedFile, setUploadedFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [selectedSpaces, setSelectedSpaces] = useState([]);
 
   // AI Compose Modal State
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [currentContext, setCurrentContext] = useState(null);
-  
-  // Settings State
-  const [aiSettings, setAiSettings] = useState({
-    absenceThreshold: 72,
-    sensitivity: 'Vừa',
-    persona: 'pro',
-    autoScan: true,
-    telegramNotif: false,
-    approvalMode: true
+
+  // --- AI Config Logic ---
+  const DEFAULT_CONFIG = {
+    recap: { pronouns: "mình - các bạn", tone: "nhiệt huyết", structure: ["Nội dung chính"], useEmoji: true },
+    announcement: { pronouns: "mình - các bạn", tone: "chuyên nghiệp", useEmoji: true },
+    isHitlEnabled: true,
+    instruction: "Trả lời ngắn gọn, súc tích, sử dụng bullet points để dễ đọc. Luôn có câu chào và câu kết thân thiện."
+  };
+
+  const [aiConfig, setAiConfig] = useState(() => {
+    try {
+      const saved = localStorage.getItem('ta_ai_config_v6'); 
+      if (!saved) return DEFAULT_CONFIG;
+      const parsed = JSON.parse(saved);
+      return parsed?.recap ? parsed : DEFAULT_CONFIG;
+    } catch (e) { return DEFAULT_CONFIG; }
   });
 
-  const [lastFetchTime, setLastFetchTime] = useState(Date.now());
-  const [now, setNow] = useState(Date.now());
+  const [configDraft, setConfigDraft] = useState(aiConfig);
 
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+  const handleSaveConfig = () => {
+    setAiConfig(configDraft);
+    localStorage.setItem('ta_ai_config_v6', JSON.stringify(configDraft));
+    addToast('Đã áp dụng cấu hình AI mới!');
+  };
+
+  const buildRecapPrompt = () => {
+    const r = aiConfig?.recap || DEFAULT_CONFIG.recap;
+    const inst = aiConfig?.instruction || DEFAULT_CONFIG.instruction;
+    return `Hãy đóng vai một Trợ giảng (TA) ${r.tone}. Xưng hô "${r.pronouns}". Cấu trúc: ${(r.structure || []).join(', ')}. Hướng dẫn bổ sung: ${inst}`;
+  };
+
+  const buildAnnouncementPrompt = (purpose, context) => {
+    const a = aiConfig?.announcement || DEFAULT_CONFIG.announcement;
+    const inst = aiConfig?.instruction || DEFAULT_CONFIG.instruction;
+    return `Thông báo: ${purpose}. Ngữ cảnh: ${context}. Xưng hô: "${a.pronouns}". Tone: ${a.tone}. Hướng dẫn bổ sung: ${inst}`;
+  };
 
   const fetchData = async () => {
     if (taSpaces.length === 0) return;
@@ -68,583 +114,271 @@ const TADashboard = () => {
       const allAtRisk = [];
       const allQueue = [];
       const allLogs = [];
-
       await Promise.all(taSpaces.map(async (space) => {
-        // Tự động quét rủi ro mỗi khi tải dữ liệu
         try { await taService.scanAtRisk(space.id); } catch (e) {}
-
         const [atRiskRes, queueRes, logsRes] = await Promise.allSettled([
           taService.getAtRiskList(space.id),
           taService.getSummaryQueue(space.id),
           taService.getActionLogs(space.id)
         ]);
-
-        if (atRiskRes.status === 'fulfilled') {
-          const data = (atRiskRes.value.data || []).map(s => ({ ...s, space_id: space.id }));
-          allAtRisk.push(...data);
+        if (atRiskRes.status === 'fulfilled' && atRiskRes.value.success) {
+          allAtRisk.push(...(atRiskRes.value.data || []).map(s => ({ ...s, space_id: space.id })));
         }
-        if (queueRes.status === 'fulfilled') {
-          const data = (queueRes.value.data || []).map(q => ({ ...q, space_id: space.id }));
-          allQueue.push(...data);
+        if (queueRes.status === 'fulfilled' && queueRes.value.success) {
+          allQueue.push(...(queueRes.value.data || []).map(q => ({ ...q, space_id: space.id })));
         }
-        if (logsRes.status === 'fulfilled') {
+        if (logsRes.status === 'fulfilled' && logsRes.value.success) {
           allLogs.push(...(logsRes.value.data || []));
         }
       }));
+      
+      const sortedAtRisk = allAtRisk.sort((a, b) => {
+        const scoreA = a.metadata?.score || (a.level === 'critical' ? 5 : 2);
+        const scoreB = b.metadata?.score || (b.level === 'critical' ? 5 : 2);
+        return scoreB - scoreA;
+      });
 
-      setAtRiskList(allAtRisk);
+      setAtRiskList(sortedAtRisk);
       setSummaryQueue(allQueue);
       setActionLogs(allLogs);
-      setLastFetchTime(Date.now());
-    } catch (error) {
-      console.error('Failed to fetch TA Dashboard data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const [processedSnapshots, setProcessedSnapshots] = useState(() => {
-    return JSON.parse(localStorage.getItem('ta_processed_snapshots') || '[]');
-  });
-
-  // Logic phân loại và lọc Alert thông minh theo đặc tả rút gọn
-  const getCategorizedAlerts = () => {
-    const filtered = atRiskList.filter(item => {
-      // Ẩn nếu đã xử lý trong phiên này hoặc đã resolved trong DB
-      if (processedSnapshots.includes(item.id)) return false;
-      if (item.is_resolved) return false;
-      // Filter theo lớp học nếu có chọn lọc
-      if (selectedSpaceFilter !== 'all' && item.space_id !== selectedSpaceFilter) return false;
-      return true;
-    });
-
-    return filtered.map(item => {
-      const score = item.metadata?.score || 0;
-      const signals = item.metadata?.signals || [];
-      const signalsCount = signals.length;
-
-      let displayLevel = 'warning';
-      let color = 'var(--ta-warning)';
-
-      if (score >= 7 || (score >= 5 && signalsCount >= 2)) {
-        displayLevel = 'critical';
-        color = 'var(--ta-critical)';
-      } else if (score >= 5) {
-        displayLevel = 'high';
-        color = 'var(--ta-high)';
-      }
-
-      return { ...item, displayLevel, color };
-    }).sort((a, b) => (b.metadata?.score || 0) - (a.metadata?.score || 0));
-  };
-
-  const markAsProcessed = (snapshotId) => {
-    const processedIds = JSON.parse(localStorage.getItem('ta_processed_snapshots') || '[]');
-    if (!processedIds.includes(snapshotId)) {
-      processedIds.push(snapshotId);
-      localStorage.setItem('ta_processed_snapshots', JSON.stringify(processedIds));
-    }
-    // Update local state to trigger re-render
-    setAtRiskList(prev => prev.filter(item => item.id !== snapshotId));
+    } catch (error) {} finally { setLoading(false); }
   };
 
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 60000);
     return () => clearInterval(interval);
-  }, [spaces.length]);
-
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (selectedSpaceFilter === 'all') {
-      alert('⚠️ Vui lòng chọn một lớp học cụ thể trước khi tải lên tài liệu.');
-      return;
-    }
-    
-    setUploading(true);
-    try {
-      const res = await taService.uploadSlide(selectedSpaceFilter, file);
-      if (res.success) {
-        setUploadedFile({ ...res.data, rawFile: file });
-      } else {
-        alert('❌ Tải lên thất bại.');
-      }
-    } catch (error) {
-      alert('❌ Lỗi kết nối server.');
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const startAiAnalysis = async () => {
-    if (selectedSpaceFilter === 'all') {
-      alert('⚠️ Vui lòng chọn một lớp học cụ thể để AI có thể phân tích dữ liệu.');
-      return;
-    }
-
-    setCurrentStep(2);
-    try {
-      let agentResponse;
-      const senderId = user?.display_name || user?.id || 'TA';
-      const query = `Hãy đóng vai một Trợ giảng (TA) nhiệt huyết và chuyên nghiệp. Dựa trên nội dung buổi học, hãy soạn một bản Recap gửi cho các bạn học viên với cấu trúc sau:
-1. Lời chào: Thân thiện, truyền cảm hứng (VD: 'Chào các bạn, buổi học hôm nay thực sự bùng nổ!').
-2. Tóm tắt nội dung chính: Chia thành 3-5 ý chính rõ ràng, mỗi ý có tiêu đề đậm và mô tả súc tích.
-3. Các quyết định/Lưu ý quan trọng: Điểm lại những gì học viên cần chốt hoặc nhớ kỹ.
-4. Bài tập & Deadline: Liệt kê rõ ràng những việc cần hoàn thành.
-5. Lời kết: Động viên và nhắc nhở các bạn.
-
-Giọng văn: Chuyên nghiệp nhưng gần gũi, sử dụng các từ như 'chúng mình', 'các bạn'. 
-Yêu cầu: Định dạng Markdown đẹp mắt, sử dụng emoji phù hợp để tăng tính sinh động.`;
-
-      if (uploadedFile && uploadedFile.rawFile) {
-        // Phân tích từ File PDF/Ảnh bài giảng
-        agentResponse = await taService.callAgentWithFile(
-          selectedSpaceFilter,
-          query,
-          senderId,
-          uploadedFile.rawFile
-        );
-      } else {
-        // Tóm tắt từ hội thoại trong phòng chat
-        agentResponse = await taService.callAgentChat(
-          selectedSpaceFilter,
-          query,
-          senderId
-        );
-      }
-      console.log('[DEBUG] Agent Response:', agentResponse);
-      if (agentResponse && agentResponse.answer) {
-        // Lưu bản thảo vào DB sau khi Agent trả về kết quả
-        const res = await taService.createSummaryDraft({
-          spaceId: selectedSpaceFilter,
-          content: agentResponse.answer,
-          metadata: { 
-            processing_time: agentResponse.processing_time,
-            source: uploadedFile ? 'multimedia' : 'conversation',
-            created_by: user?.id
-          },
-          draft_type: 'lesson_recap'
-        });
-
-        if (res.success) {
-          setAiPreview(res.data);
-          setCurrentStep(3);
-        } else {
-          alert('❌ Không thể lưu bản thảo Recap.');
-          setCurrentStep(1);
-        }
-      } else {
-        throw new Error('Agent returned invalid response');
-      }
-    } catch (error) {
-      console.error('AI Analysis failed:', error);
-      alert('❌ Lỗi phân tích từ AI Agent: ' + (error.message || 'Dịch vụ không phản hồi'));
-      setCurrentStep(1);
-    }
-  };
-
-  const handleGenerateAnnouncement = async (purpose, context) => {
-    if (selectedSpaceFilter === 'all') {
-      alert('⚠️ Vui lòng chọn một lớp học cụ thể ở thanh bộ lọc phía trên trước khi tạo thông báo!');
-      return;
-    }
-    setUploading(true);
-    try {
-      const senderId = user?.display_name || user?.id || 'TA';
-      const query = `Hãy đóng vai một Trợ giảng chuyên nghiệp. Soạn một thông báo gửi tới lớp học.
-Mục đích: ${purpose}
-Ngữ cảnh cụ thể: ${context || 'Chưa có thông tin chi tiết'}
-
-Yêu cầu:
-- Phong cách: Gần gũi, khích lệ nhưng vẫn trang trọng.
-- Định dạng: Markdown (dùng Bold, Bullet points để dễ đọc).
-- Sử dụng Emoji phù hợp.
-- Độ dài: Súc tích, tập trung vào thông tin cần truyền tải.`;
-
-      const agentResponse = await taService.callAgentChat(selectedSpaceFilter, query, senderId);
-      
-      if (agentResponse && agentResponse.answer) {
-        const res = await taService.createSummaryDraft({
-          spaceId: selectedSpaceFilter,
-          content: agentResponse.answer,
-          metadata: { purpose, context, created_by: user?.id, processing_time: agentResponse.processing_time },
-          draft_type: 'announcement'
-        });
-
-        if (res.success) {
-          setAiPreview(res.data);
-          // Cập nhật hàng đợi hiển thị
-          setSummaryQueue([res.data, ...summaryQueue]);
-        }
-      }
-    } catch (error) {
-      console.error('Announcement generation failed:', error);
-      alert('❌ Không thể tạo thông báo bằng AI: ' + error.message);
-    } finally {
-      setUploading(false);
-    }
-  };
+  }, [taSpaces.length]);
 
   const handleResolveAlert = async (id, spaceId) => {
     try {
-      await taService.resolveAlert(id, spaceId);
-      markAsProcessed(id); // Ẩn ngay lập tức khỏi Dashboard
-    } catch (error) {
-      console.error('Resolve failed:', error);
-    }
+      const res = await taService.resolveAlert(id, spaceId);
+      if (res.success) {
+        setAtRiskList(prev => prev.filter(item => item.id !== id));
+        addToast('Đã giải quyết');
+      }
+    } catch (error) {}
   };
 
   const handleApproveSummary = async (draftId, spaceId) => {
+    setIsSending(true);
     try {
-      // 1. Cập nhật nội dung bản thảo lên server trước (để lưu những gì TA đã sửa như 'ABC')
-      if (aiPreview && aiPreview.id === draftId) {
-        await taService.updateSummaryDraft(draftId, spaceId, {
-          content: aiPreview.content,
-          metadata: aiPreview.metadata
-        });
-      }
-
-      // 2. Sau đó mới gọi phê duyệt để đăng bài
-      await taService.approveSummary(draftId, spaceId);
-      alert('✅ Bản tóm tắt đã được phê duyệt và đăng bài thành công!');
-      fetchData();
-      if (currentStep === 3) {
-        setCurrentStep(1);
+      if (aiPreview?.id === draftId) await taService.updateSummaryDraft(draftId, spaceId, { content: aiPreview.content });
+      const res = await taService.approveSummary(draftId, spaceId);
+      if (res.success) {
+        addToast('Đã gửi bài!');
+        fetchData();
         setAiPreview(null);
-        setUploadedFile(null);
+        setCurrentStep(1);
       }
-    } catch (error) {
-      console.error('Approval failed:', error);
-      const errorMsg = error.response?.data?.message || error.message || 'Lỗi không xác định';
-      alert(`❌ Lỗi khi phê duyệt bản tóm tắt: ${errorMsg}`);
-    }
+    } catch (error) {} finally { setIsSending(false); }
   };
-  
+
   const handleScheduleSummary = async (draftId, spaceId, scheduledAt) => {
-    console.log('[DEBUG] Scheduling summary:', { draftId, spaceId, scheduledAt });
-    if (!draftId || !spaceId || !scheduledAt) {
-      alert(`⚠️ Thiếu thông tin đặt lịch: ${!draftId ? 'ID bản thảo, ' : ''}${!spaceId ? 'ID lớp học, ' : ''}${!scheduledAt ? 'Thời gian' : ''}`);
-      return;
-    }
+    setIsSending(true);
     try {
-      // 1. Lưu nội dung mới nhất (ví dụ 'ABC') trước khi đặt lịch
-      if (aiPreview && aiPreview.id === draftId) {
-        await taService.updateSummaryDraft(draftId, spaceId, {
-          content: aiPreview.content,
-          metadata: aiPreview.metadata
-        });
-      }
-
-      // 2. Chuyển đổi sang ISO String để tránh lệch múi giờ khi lưu vào DB
-      const isoDate = new Date(scheduledAt).toISOString();
-      await taService.scheduleSummary(draftId, spaceId, isoDate);
-      alert(`📅 Đã đặt lịch gửi bản tóm tắt vào: ${new Date(scheduledAt).toLocaleString()}`);
-      fetchData();
-      if (currentStep === 3) {
-        setCurrentStep(1);
+      const res = await taService.scheduleSummary(draftId, spaceId, new Date(scheduledAt).toISOString());
+      if (res.success) {
+        addToast('Đã đặt lịch!');
+        fetchData();
         setAiPreview(null);
-        setUploadedFile(null);
+        setCurrentStep(1);
       }
-    } catch (error) {
-      console.error('Scheduling failed:', error);
-      alert('❌ Lỗi khi đặt lịch gửi.');
-    }
+    } catch (error) {} finally { setIsSending(false); }
   };
 
-  const handleCancelSchedule = async (draftId) => {
+  const handleRefineAi = async (refineInstruction) => {
+    if (!aiPreview || !selectedSpaces.length) return;
+    setIsAnalyzing(true);
     try {
-      // Tìm không gian của bản thảo để truyền spaceId (vì API của tôi yêu cầu spaceId để check quyền)
-      const draft = summaryQueue.find(q => q.id === draftId);
-      if (!draft) return;
-
-      await taService.cancelSchedule(draftId, draft.space_id);
-      alert('✅ Đã hủy đặt lịch gửi.');
-      fetchData();
+      const prompt = `Đây là nội dung bản thảo hiện tại:\n---\n${aiPreview.content}\n---\nHãy sửa lại nội dung này theo yêu cầu sau: ${refineInstruction}. Giữ nguyên định dạng Markdown.`;
+      const resAgent = await taService.callAgentChat(selectedSpaces[0], prompt, user?.display_name || 'TA');
+      
+      if (resAgent?.success && resAgent.answer) {
+        const res = await taService.updateSummaryDraft(aiPreview.id, aiPreview.space_id, {
+          content: resAgent.answer
+        });
+        if (res.success) {
+          setAiPreview(res.data);
+          addToast('Đã cập nhật bản thảo!');
+        }
+      }
     } catch (error) {
-      console.error('Cancel schedule failed:', error);
-      alert('❌ Lỗi khi hủy đặt lịch.');
-    }
+      addToast('Không thể hiệu chỉnh nội dung', 'error');
+    } finally { setIsAnalyzing(false); }
   };
 
   const handleOpenCompose = async (snapshotId, spaceId) => {
-    console.log(`[TA-DASHBOARD] Khởi tạo context cho Agent: snapshotId=${snapshotId}, spaceId=${spaceId}`);
     try {
       setLoading(true);
       const res = await taService.getAtRiskContext(snapshotId, spaceId);
-      
-      if (res && res.data) {
-        console.log('[TA-DASHBOARD] Đã lưu context thành công:', res.data);
+      if (res.success) {
         setCurrentContext({ id: snapshotId, spaceId, ...res.data });
-      } else {
-        // Mock data nếu API trả về rỗng để tránh màn hình trắng
-        console.warn('[TA-DASHBOARD] API context trả về rỗng, đang sử dụng dữ liệu giả lập.');
-        const student = atRiskList.find(s => s.id === snapshotId);
-        setCurrentContext({
-          id: snapshotId,
-          spaceId,
-          student_info: { name: student?.profiles?.display_name || 'Học viên' },
-          at_risk_data: { 
-            level: student?.level || 'warning',
-            score: student?.metadata?.score || 2,
-            signals: Array.isArray(student?.metadata?.signals) ? student.metadata.signals : ['Vắng mặt lâu ngày'],
-            last_msg: student?.metadata?.last_msg
-          }
-        });
+        setIsComposeOpen(true);
       }
-      setIsComposeOpen(true);
-    } catch (error) {
-      console.error('[TA-DASHBOARD] Lỗi khi lấy context:', error);
-      // Fallback để Modal vẫn mở được với dữ liệu tối thiểu
-      const student = atRiskList.find(s => s.id === snapshotId);
-      setCurrentContext({
-        id: snapshotId,
-        spaceId,
-        student_info: { name: student?.profiles?.display_name || 'Học viên' },
-        at_risk_data: { 
-          level: 'warning', 
-          score: 2,
-          signals: ['Mất kết nối API (Sử dụng dữ liệu tạm thời)'] 
-        }
-      });
-      setIsComposeOpen(true);
-    } finally {
-      setLoading(false);
-    }
+    } catch (error) {} finally { setLoading(false); }
   };
 
   const handleAiSend = async (message) => {
     if (!currentContext) return;
-    
     try {
       setLoading(true);
-      await taService.sendSmartMessage(currentContext.at_risk_data?.space_id || selectedSpaceFilter, {
-        studentId: currentContext.student_info?.id,
-        content: message,
-        snapshotId: currentContext.id
+      const res = await taService.sendSmartMessage(currentContext.spaceId, {
+        taId: user?.id, studentId: currentContext.student_info?.id,
+        content: message, snapshotId: currentContext.id, spaceId: currentContext.spaceId
       });
-      
-      markAsProcessed(currentContext.id); // Ẩn ngay sau khi gửi tin nhắn hỗ trợ thành công
-      alert(`🤖 Tin nhắn AI đã được gửi thành công đến học viên!`);
-      setIsComposeOpen(false);
-    } catch (error) {
-      console.error('Failed to send smart message:', error);
-      alert('❌ Lỗi khi gửi tin nhắn AI: ' + (error.response?.data?.message || error.message));
-    } finally {
-      setLoading(false);
-    }
+      if (res.success) {
+        setIsComposeOpen(false);
+        handleResolveAlert(currentContext.id, currentContext.spaceId);
+        addToast('Đã gửi tin nhắn!');
+      }
+    } catch (error) {} finally { setLoading(false); }
   };
-
-  const formatOfflineTime = (student) => {
-    console.log(`[DEBUG] Formatting Offline Time for ${student.profiles?.display_name}:`, student);
-    const lastSeenStr = student.last_seen || student.metadata?.last_seen || student.profiles?.last_seen;
-    
-    let diffMs = 0;
-    if (lastSeenStr) {
-      const lastDate = new Date(lastSeenStr);
-      diffMs = new Date() - lastDate;
-    } else if (student.hours_since_active) {
-      // Fallback dùng số giờ từ backend
-      diffMs = student.hours_since_active * 3600000;
-    } else {
-      return 'N/A';
-    }
-
-    if (diffMs < 0) return 'Vừa mới';
-    
-    const diffHours = diffMs / (1000 * 60 * 60);
-    const d = Math.floor(diffHours / 24);
-    const h = Math.floor(diffHours % 24);
-    const m = Math.floor((diffMs / (1000 * 60)) % 60);
-    const s = Math.floor((diffMs / 1000) % 60);
-    
-    if (d > 0) return `${d}d ${h}h ${m}m ${s}s`;
-    if (h > 0) return `${h}h ${m}m ${s}s`;
-    return `${m}m ${s}s`;
-  };
-
-  const getRiskColor = (score) => {
-    if (score >= 5) return 'var(--ta-red)';
-    if (score >= 2) return 'var(--ta-amber)';
-    return 'var(--ta-green)';
-  };
-
-  const getHomeworkBadge = (status) => {
-    switch(status) {
-      case 'submitted': return <span className="ta-badge" style={{background: 'var(--ta-bg-success)', color: 'var(--ta-green)'}}>Đã nộp</span>;
-      case 'late': return <span className="ta-badge" style={{background: 'var(--ta-red-bg)', color: 'var(--ta-red)'}}>Nộp muộn</span>;
-      default: return null;
-    }
-  };
-
-  const filteredAtRisk = selectedSpaceFilter === 'all' ? atRiskList : atRiskList.filter(s => s.space_id === selectedSpaceFilter);
-  const filteredQueue = selectedSpaceFilter === 'all' ? summaryQueue : summaryQueue.filter(q => q.space_id === selectedSpaceFilter);
-
-  const criticalCount = atRiskList.filter(s => s.level === 'critical').length;
-  const warningCount = atRiskList.filter(s => s.level === 'warning').length;
-  const pendingRecaps = summaryQueue.filter(q => q.status === 'scheduled' && q.draft_type === 'lesson_recap').length;
-  const sentRecaps = summaryQueue.filter(q => q.status === 'approved' && q.draft_type === 'lesson_recap').length;
-  const pendingAnnouncements = summaryQueue.filter(q => q.status === 'scheduled' && q.draft_type === 'announcement').length;
-  const sentAnnouncements = summaryQueue.filter(q => q.status === 'approved' && q.draft_type === 'announcement').length;
-  
-  const resolvedAlerts = actionLogs.filter(l => l.action_type === 'dismissed_alert').length;
-  
-  // Tab-specific ROI calculations
-  const atRiskSaved = ((atRiskList.length * 0.3) + (resolvedAlerts * 0.2)).toFixed(1);
-  const recapSaved = ((sentRecaps + pendingRecaps) * 1.5).toFixed(1);
-  const announcementSaved = ((sentAnnouncements + pendingAnnouncements) * 0.5).toFixed(1);
-
-  if (taSpaces.length === 0 && !loading) {
-    return (
-      <div className="ta-dashboard-container" style={{display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh'}}>
-        <div style={{textAlign: 'center', color: 'var(--ta-text3)'}}>
-          <FiAlertCircle size={48} style={{marginBottom: '16px', opacity: 0.5}} />
-          <h2>Trung tâm Quản lý TA</h2>
-          <p>Bạn hiện chưa quản lý lớp học nào.</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="ta-dashboard-container">
-      <AiComposeModal 
-        isOpen={isComposeOpen} 
-        onClose={() => setIsComposeOpen(false)} 
-        context={currentContext} 
-        onSend={handleAiSend} 
-        isSending={loading}
-      />
+      <div className="toast-container">
+        {isSending && (
+          <div className="toast-item animate-fade" style={{ borderLeftColor: 'var(--primary)', pointerEvents: 'auto' }}>
+            <FiRefreshCw className="spin" color="var(--primary)" />
+            <span>Đang thực hiện...</span>
+          </div>
+        )}
+        {toasts.map(t => (
+          <div key={t.id} className={`toast-item ${t.type} animate-fade`}>
+            {t.type === 'success' ? <FiCheckCircle color="var(--ta-green)" /> : <FiAlertCircle color="var(--ta-red)" />}
+            <span>{t.message}</span>
+          </div>
+        ))}
+      </div>
+
+      <AiComposeModal isOpen={isComposeOpen} onClose={() => setIsComposeOpen(false)} context={currentContext} onSend={handleAiSend} isSending={loading} />
 
       <aside className="ta-internal-sidebar">
         <div className="sb-head">
-          <div className="sb-title">TA Dashboard v3</div>
+          <div className="sb-title">TA Management Hub</div>
           <div className="sb-sub">{taSpaces.length} Lớp đang quản lý</div>
         </div>
-        <div className="sb-section">Giám sát</div>
-        <div className={`sb-item ${activeTab === 'at-risk' ? 'active' : ''}`} onClick={() => setActiveTab('at-risk')}>
-          <div className="sb-icon" style={{background: 'var(--ta-red-bg)', color: 'var(--ta-red)'}}><FiAlertCircle /></div>
-          <span>At-Risk Alert</span>
-          {atRiskList.length > 0 && <span className="ta-badge badge-red" style={{marginLeft: 'auto'}}>{atRiskList.length}</span>}
+        <div className="flex-1 flex flex-col gap-xs p-2">
+          <button onClick={() => setActiveTab('at-risk')} className={`sb-item ${activeTab === 'at-risk' ? 'active' : ''}`}>
+            <FiAlertCircle /> <span>Giám sát</span>
+            {atRiskList.length > 0 && <span className="ta-badge badge-red ml-auto">{atRiskList.length}</span>}
+          </button>
+          <button onClick={() => { setActiveTab('summary'); setCurrentStep(1); setAiPreview(null); }} className={`sb-item ${activeTab === 'summary' ? 'active' : ''}`}>
+            <FiFileText /> <span>Recap AI</span>
+          </button>
+          <button onClick={() => { setActiveTab('announcements'); setAiPreview(null); }} className={`sb-item ${activeTab === 'announcements' ? 'active' : ''}`}>
+            <FiMessageSquare /> <span>Thông báo AI</span>
+          </button>
+          <button onClick={() => setActiveTab('logs')} className={`sb-item ${activeTab === 'logs' ? 'active' : ''}`}>
+            <FiActivity /> <span>Nhật ký</span>
+          </button>
         </div>
-        <div className={`sb-item ${activeTab === 'summary' ? 'active' : ''}`} onClick={() => setActiveTab('summary')}>
-          <div className="sb-icon" style={{background: 'rgba(124, 58, 237, 0.1)', color: 'var(--ta-accent)'}}><FiFileText /></div>
-          <span>Recap AI Hub</span>
-          {summaryQueue.filter(q => q.status === 'scheduled' && q.draft_type === 'lesson_recap').length > 0 && (
-            <span className="ta-badge" style={{marginLeft: 'auto', background: 'var(--ta-accent)', color: 'white'}}>
-              {summaryQueue.filter(q => q.status === 'scheduled' && q.draft_type === 'lesson_recap').length}
-            </span>
-          )}
-        </div>
-        <div className={`sb-item ${activeTab === 'logs' ? 'active' : ''}`} onClick={() => setActiveTab('logs')}>
-          <div className="sb-icon" style={{background: 'rgba(59, 130, 246, 0.1)', color: 'var(--ta-blue)'}}><FiActivity /></div>
-          <span>Nhật ký hoạt động</span>
-        </div>
-        <div className={`sb-item ${activeTab === 'announcements' ? 'active' : ''}`} onClick={() => setActiveTab('announcements')}>
-          <div className="sb-icon" style={{background: 'rgba(245, 158, 11, 0.1)', color: 'var(--ta-amber)'}}><FiMessageSquare /></div>
-          <span>Thông báo AI</span>
-          {summaryQueue.filter(q => q.status === 'scheduled' && q.draft_type === 'announcement').length > 0 && (
-            <span className="ta-badge" style={{marginLeft: 'auto', background: 'var(--ta-amber)', color: 'white'}}>
-              {summaryQueue.filter(q => q.status === 'scheduled' && q.draft_type === 'announcement').length}
-            </span>
-          )}
-        </div>
-        <div className="sb-section">Hệ thống</div>
-        <div className={`sb-item ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>
-          <div className="sb-icon" style={{background: 'rgba(156, 163, 175, 0.1)', color: 'var(--ta-text3)'}}><FiSettings /></div>
-          <span>Cấu hình Intelligence</span>
+        <div className="mt-auto border-t border-primary/10 p-2">
+          <button onClick={() => setActiveTab('settings')} className={`sb-item ${activeTab === 'settings' ? 'active' : ''}`}>
+            <FiSettings /> <span>Cấu hình AI</span>
+          </button>
         </div>
       </aside>
 
       <div className="ta-main-content">
         <header className="ta-header">
           <div className="ta-title-area">
-             <h1>{activeTab === 'at-risk' ? 'Giám sát Rủi ro' : activeTab === 'summary' ? 'Recap AI Hub' : activeTab === 'announcements' ? 'Thông báo AI' : activeTab === 'logs' ? 'Nhật ký hoạt động' : 'Cấu hình'}</h1>
-             <p>{taSpaces.length} Lớp đang quản lý</p>
+             <h1>{activeTab === 'at-risk' ? 'Giám sát' : activeTab === 'summary' ? 'Recap AI' : activeTab === 'announcements' ? 'Thông báo AI' : 'Hệ thống'}</h1>
           </div>
-          
-          <button className="ta-btn" onClick={fetchData} disabled={loading} title="Làm mới dữ liệu">
-            <FiRefreshCw className={loading ? 'spin' : ''} />
-          </button>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            {activeTab === 'settings' && (
+              <button className="vibrant-btn" style={{ padding: '8px 16px', fontSize: '13px' }} onClick={handleSaveConfig}>
+                <FiSave /> Lưu thay đổi
+              </button>
+            )}
+            <button className="ta-btn" onClick={fetchData} disabled={loading}><FiRefreshCw className={loading ? 'spin' : ''} /></button>
+          </div>
         </header>
 
-        <div className="ta-scroll-content">
-          {/* Global Space Selector within content */}
-          {(activeTab === 'at-risk' || activeTab === 'summary' || activeTab === 'announcements') && (
-            <div className="space-selector-container">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <FiLayers color="var(--ta-text3)" />
-                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--ta-text2)', textTransform: 'uppercase', letterSpacing: '1px' }}>Chọn lớp học:</span>
-              </div>
-              <select 
-                className="ta-select-premium"
-                value={selectedSpaceFilter}
-                onChange={(e) => setSelectedSpaceFilter(e.target.value)}
-              >
-                <option value="all">Tất cả các lớp học</option>
-                {taSpaces.map(space => (
-                  <option key={space.id} value={space.id}>{space.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
+        <div className="ta-scroll-content" key={activeTab}>
           {activeTab === 'at-risk' && (
             <div className="animate-fade">
-              <div className="metrics-grid" style={{ marginBottom: '30px' }}>
-                <div className="stat-card" style={{ borderLeft: '4px solid var(--ta-red)' }}>
-                  <div className="stat-label">Cấp bách (Critical)</div>
-                  <div className="stat-val" style={{ color: 'var(--ta-red)' }}>{criticalCount}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--ta-text3)' }}>Cần can thiệp ngay lập tức</div>
+              <div className="metrics-grid">
+                <div className="stat-card critical">
+                  <span className="stat-label">Rủi ro Nghiêm trọng</span>
+                  <div className="stat-value">{criticalCount} <span>học viên</span></div>
                 </div>
-                <div className="stat-card" style={{ borderLeft: '4px solid var(--ta-amber)' }}>
-                  <div className="stat-label">Cảnh báo (Warning)</div>
-                  <div className="stat-val" style={{ color: 'var(--ta-amber)' }}>{warningCount}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--ta-text3)' }}>Học viên có dấu hiệu vắng mặt</div>
+                <div className="stat-card warning">
+                  <span className="stat-label">Cần chú ý</span>
+                  <div className="stat-value">{warningCount} <span>học viên</span></div>
                 </div>
-                <div className="stat-card" style={{ borderLeft: '4px solid var(--ta-green)' }}>
-                  <div className="stat-label">Số ca đã xử lý</div>
-                  <div className="stat-val" style={{ color: 'var(--ta-green)' }}>{resolvedAlerts}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--ta-text3)' }}>Hoàn thành hỗ trợ học viên</div>
-                </div>
-                <div className="stat-card" style={{ borderLeft: '4px solid var(--ta-purple)' }}>
-                  <div className="stat-label">Thời gian tiết kiệm</div>
-                  <div className="stat-val" style={{ color: 'var(--ta-purple)' }}>{atRiskSaved}h</div>
-                  <div style={{ fontSize: '11px', color: 'var(--ta-text3)' }}>ROI từ giám sát & soạn tin</div>
+                <div className="stat-card success">
+                  <span className="stat-label">Tiết kiệm thời gian</span>
+                  <div className="stat-value">{timeSaved} <span>phút/tuần</span></div>
                 </div>
               </div>
 
-              <div className="ta-card-premium" style={{ marginBottom: '30px' }}>
-                <div className="card-head" style={{ borderBottom: '1px solid var(--ta-border)', padding: '20px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--ta-red)' }}></div>
-                    <span style={{ fontWeight: 800, fontSize: '13px', letterSpacing: '1px' }}>GIÁM SÁT HỌC VIÊN RỦI RO</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <div className="ta-badge" style={{ background: 'var(--ta-red-bg)', color: 'var(--ta-red)', fontSize: '10px' }}>CRITICAL: {criticalCount}</div>
-                    <div className="ta-badge" style={{ background: 'var(--ta-amber-bg)', color: 'var(--ta-amber)', fontSize: '10px' }}>WARNING: {warningCount}</div>
+              <div className="monitoring-overview">
+                <div className="chart-card">
+                  <h4>TỔNG QUAN XỬ LÝ RỦI RO</h4>
+                  <div style={{ width: '100%', height: 250 }}>
+                    <ResponsiveContainer>
+                      <BarChart data={chartData} layout="vertical" margin={{ left: 20, right: 30 }}>
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border-primary)" />
+                        <XAxis type="number" hide />
+                        <YAxis dataKey="name" type="category" width={80} style={{ fontSize: '12px', fontWeight: 600 }} />
+                        <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ background: 'var(--bg-surface-secondary)', border: '1px solid var(--border-primary)', borderRadius: '8px' }} />
+                        <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={32}>
+                          {chartData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
                   </div>
                 </div>
-                <div className="ta-card-body" style={{ padding: 0 }}>
-                  {getCategorizedAlerts().length === 0 ? (
-                    <div className="empty-state" style={{ padding: '60px 0' }}>
-                      <FiCheckCircle size={48} color="var(--ta-accent)" style={{ marginBottom: '16px', opacity: 0.5 }} />
-                      <h3>Mọi thứ đang trong tầm kiểm soát</h3>
-                      <p style={{ color: 'var(--ta-text3)' }}>Tất cả học viên đều đang tương tác ổn định.</p>
+
+                <div className="chart-card" style={{ justifyContent: 'flex-start' }}>
+                  <h4>BỘ LỌC LỚP HỌC</h4>
+                  <div className="dropdown-custom">
+                    <div className="dropdown-trigger" onClick={() => setIsDropdownOpen(!isDropdownOpen)}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <FiLayers color="var(--primary)" />
+                        <span>{selectedSpaceFilter === 'all' ? 'Tất cả lớp học' : taSpaces.find(s => s.id === selectedSpaceFilter)?.name}</span>
+                      </div>
+                      <FiChevronDown />
                     </div>
-                  ) : (
-                    getCategorizedAlerts().map(student => (
+                    {isDropdownOpen && (
+                      <div className="dropdown-menu">
+                        <div className={`dropdown-item ${selectedSpaceFilter === 'all' ? 'active' : ''}`} onClick={() => { setSelectedSpaceFilter('all'); setIsDropdownOpen(false); }}>Tất cả lớp học</div>
+                        {taSpaces.map(space => <div key={space.id} className={`dropdown-item ${selectedSpaceFilter === space.id ? 'active' : ''}`} onClick={() => { setSelectedSpaceFilter(space.id); setIsDropdownOpen(false); }}>{space.name}</div>)}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ marginTop: 'auto', fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.5' }}>
+                    <FiFilter size={14} style={{ verticalAlign: 'middle', marginRight: '6px' }} />
+                    Chọn một lớp cụ thể để xem chi tiết các học viên đang gặp khó khăn trong lớp đó.
+                  </div>
+                </div>
+              </div>
+
+              <div className="ta-card-premium">
+                <div className="card-head"><h3>DANH SÁCH HỌC VIÊN CẦN HỖ TRỢ</h3></div>
+                <div className="ta-card-body" style={{ padding: '8px 0' }}>
+                  {atRiskList.filter(item => !item.is_resolved && (selectedSpaceFilter === 'all' || item.space_id === selectedSpaceFilter)).length > 0 ? (
+                    atRiskList.filter(item => !item.is_resolved && (selectedSpaceFilter === 'all' || item.space_id === selectedSpaceFilter)).map(student => (
                       <RiskCard 
-                        key={student.id} 
-                        student={student} 
-                        spaceName={taSpaces.find(s => s.id === student.space_id)?.name}
-                        onResolve={handleResolveAlert}
-                        onGetContext={handleOpenCompose}
-                        formatOfflineTime={formatOfflineTime}
-                        getRiskColor={() => student.color}
-                        getHomeworkBadge={getHomeworkBadge}
+                        key={student.id} student={student} spaceName={taSpaces.find(s => s.id === student.space_id)?.name}
+                        onResolve={handleResolveAlert} onGetContext={handleOpenCompose}
+                        formatOfflineTime={(s) => {
+                          const hours = Math.floor(s.hours_since_active || 0);
+                          if (hours === 0) return 'Vừa mới';
+                          if (hours < 24) return `${hours} giờ`;
+                          return `${Math.floor(hours/24)} ngày`;
+                        }} 
+                        getRiskColor={(score, level) => {
+                          if (level === 'critical' || score >= 5) return 'var(--ta-red)';
+                          if (level === 'warning' || score >= 2) return 'var(--ta-amber)';
+                          return 'var(--ta-green)';
+                        }}
                       />
                     ))
+                  ) : (
+                    <div className="empty-state"><FiCheckSquare size={48} style={{ opacity: 0.2, marginBottom: '16px' }} /><p>Tuyệt vời! Không có học viên nào gặp rủi ro trong bộ lọc này.</p></div>
                   )}
                 </div>
               </div>
@@ -653,295 +387,158 @@ Yêu cầu:
 
           {activeTab === 'summary' && (
             <div className="animate-fade">
-              <div className="metrics-grid" style={{ marginBottom: '24px' }}>
-                <div className="stat-card" style={{ borderLeft: '4px solid var(--ta-green)' }}>
-                  <div className="stat-label">Bản Recap đã gửi</div>
-                  <div className="stat-val" style={{ color: 'var(--ta-green)' }}>{sentRecaps}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--ta-text3)' }}>Đã đăng lên phòng Tóm tắt</div>
-                </div>
-                <div className="stat-card" style={{ borderLeft: '4px solid var(--ta-amber)' }}>
-                  <div className="stat-label">Bản Recap chờ đăng</div>
-                  <div className="stat-val" style={{ color: 'var(--ta-amber)' }}>{pendingRecaps}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--ta-text3)' }}>Trong hàng đợi đặt lịch</div>
-                </div>
-                <div className="stat-card" style={{ borderLeft: '4px solid var(--ta-blue)' }}>
-                  <div className="stat-label">Độ tin cậy AI</div>
-                  <div className="stat-val" style={{ color: 'var(--ta-blue)' }}>94%</div>
-                  <div style={{ fontSize: '11px', color: 'var(--ta-text3)' }}>Độ chính xác từ Slide & Chat</div>
-                </div>
-                <div className="stat-card" style={{ borderLeft: '4px solid var(--ta-purple)' }}>
-                  <div className="stat-label">Thời gian tiết kiệm</div>
-                  <div className="stat-val" style={{ color: 'var(--ta-purple)' }}>{recapSaved}h</div>
-                  <div style={{ fontSize: '11px', color: 'var(--ta-text3)' }}>ROI từ việc tóm tắt tự động</div>
-                </div>
-              </div>
-
-              {/* Main Workflow - TOP */}
-              <div style={{ position: 'relative', marginBottom: '30px' }}>
-                <div className="tool-header-badge">
-                  CÔNG CỤ TẠO RECAP MỚI
-                </div>
-                <RecapWorkflow 
-                  currentStep={currentStep}
-                  uploading={uploading}
-                  uploadedFile={uploadedFile}
-                  handleFileUpload={handleFileUpload}
-                  startAiAnalysis={startAiAnalysis}
-                  aiPreview={aiPreview}
-                  sendTime={sendTime}
-                  setSendTime={setSendTime}
-                  scheduleDate={scheduleDate}
-                  setScheduleDate={setScheduleDate}
-                  handleApproveSummary={handleApproveSummary}
-                  setCurrentStep={setCurrentStep}
-                  setAiPreview={setAiPreview}
-                  handleScheduleSummary={handleScheduleSummary}
-                />
-              </div>
-
-              {/* Scheduled Queue - BOTTOM */}
-              {summaryQueue.filter(q => q.status === 'scheduled' && q.draft_type === 'lesson_recap' && (selectedSpaceFilter === 'all' || q.space_id === selectedSpaceFilter)).length > 0 && (
-                <div className="ta-card-premium" style={{ marginTop: '30px' }}>
-                  <div className="card-head" style={{ padding: '18px 24px', borderBottom: '1px solid var(--ta-border)', color: 'var(--ta-blue)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <FiClock /> QUẢN LÝ HÀNG ĐỢI ĐẶT LỊCH
-                  </div>
-                  <div className="scheduled-list">
-                    {summaryQueue.filter(q => q.status === 'scheduled' && q.draft_type === 'lesson_recap' && (selectedSpaceFilter === 'all' || q.space_id === selectedSpaceFilter)).map(item => (
-                      <div key={item.id} className="ta-list-row">
-                         <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 700, fontSize: '14px', color: 'var(--ta-text)' }}>{item.draft_type === 'lesson_recap' ? 'Tóm tắt bài giảng' : 'Bản tin lớp học'}</div>
-                            <div style={{ fontSize: '12px', color: 'var(--ta-text3)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '15px' }}>
-                               <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><FiLayers size={13} /> {taSpaces.find(s => s.id === item.space_id)?.name}</span>
-                               <span style={{ color: 'var(--ta-blue)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                 <FiClock size={13} /> 
-                                 Dự kiến gửi: {new Date(item.scheduled_at).toLocaleString('vi-VN')}
-                               </span>
-                            </div>
-                         </div>
-                         <div style={{ display: 'flex', gap: '12px' }}>
-                            <button className="ta-btn" style={{ background: 'var(--ta-bg3)', border: '1px solid var(--ta-border)' }} onClick={() => {
-                              setAiPreview(item);
-                              setCurrentStep(3);
-                            }}>
-                              <FiEdit3 style={{ marginRight: '6px' }} /> Xem lại
-                            </button>
-                            <button className="ta-btn" style={{ background: 'var(--ta-red-bg)', color: 'var(--ta-red)', border: '1px solid var(--ta-red)33' }} onClick={() => handleCancelSchedule(item.id)} title="Hủy đặt lịch">
-                              <FiTrash2 />
-                            </button>
-                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <RecapWorkflow 
+                currentStep={currentStep} uploading={isAnalyzing} uploadedFile={uploadedFile} isHitlEnabled={aiConfig.isHitlEnabled}
+                handleFileUpload={async (e) => {
+                  const file = e.target.files[0];
+                  if (!file || selectedSpaces.length === 0) return;
+                  setUploading(true);
+                  try {
+                    const res = await taService.uploadSlide(selectedSpaces[0], file);
+                    if (res.success) setUploadedFile({ ...res.data, rawFile: file });
+                  } catch (error) {} finally { setUploading(false); }
+                }} 
+                startAiAnalysis={async () => {
+                  if (selectedSpaces.length === 0) return;
+                  setCurrentStep(2);
+                  setIsAnalyzing(true);
+                  try {
+                    const prompt = buildRecapPrompt();
+                    let resAgent;
+                    if (uploadedFile && uploadedFile.rawFile) {
+                      resAgent = await taService.callAgentWithFile(selectedSpaces[0], prompt, user?.display_name || 'TA', uploadedFile.rawFile);
+                    } else {
+                      resAgent = await taService.callAgentChat(selectedSpaces[0], prompt, user?.display_name || 'TA');
+                    }
+                    if (resAgent?.success && resAgent.answer) {
+                      const res = await taService.createSummaryDraft({
+                        spaceId: selectedSpaces[0], content: resAgent.answer, draft_type: 'lesson_recap',
+                        metadata: { file_context: uploadedFile ? uploadedFile.filename : null, generated_at: new Date().toISOString() }
+                      });
+                      if (res.success) {
+                        setAiPreview(res.data);
+                        if (aiConfig.isHitlEnabled) setCurrentStep(3);
+                        else handleApproveSummary(res.data.id, res.data.space_id);
+                      }
+                    }
+                  } catch (error) { addToast('Lỗi khi phân tích AI', 'error'); setCurrentStep(1); } finally { setIsAnalyzing(false); }
+                }}
+                aiPreview={aiPreview} scheduleDate={scheduleDate} setScheduleDate={setScheduleDate} handleApproveSummary={handleApproveSummary} setCurrentStep={setCurrentStep}
+                setAiPreview={setAiPreview} handleScheduleSummary={handleScheduleSummary} selectedSpaces={selectedSpaces || []} setSelectedSpaces={setSelectedSpaces}
+                taSpaces={taSpaces || []} handleRefineAi={handleRefineAi}
+              />
             </div>
           )}
 
           {activeTab === 'announcements' && (
-            <div className="animate-fade">
-              <div className="metrics-grid" style={{ marginBottom: '24px' }}>
-                <div className="stat-card" style={{ borderLeft: '4px solid var(--ta-green)' }}>
-                  <div className="stat-label">Thông báo đã gửi</div>
-                  <div className="stat-val" style={{ color: 'var(--ta-green)' }}>{sentAnnouncements}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--ta-text3)' }}>Đã đăng lên phòng Thông báo</div>
-                </div>
-                <div className="stat-card" style={{ borderLeft: '4px solid var(--ta-amber)' }}>
-                  <div className="stat-label">Thông báo chờ gửi</div>
-                  <div className="stat-val" style={{ color: 'var(--ta-amber)' }}>{pendingAnnouncements}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--ta-text3)' }}>Đang trong hàng đợi</div>
-                </div>
-                <div className="stat-card" style={{ borderLeft: '4px solid var(--ta-blue)' }}>
-                  <div className="stat-label">Tỷ lệ tương tác</div>
-                  <div className="stat-val" style={{ color: 'var(--ta-blue)' }}>88%</div>
-                  <div style={{ fontSize: '11px', color: 'var(--ta-text3)' }}>Học viên đã xem thông báo</div>
-                </div>
-                <div className="stat-card" style={{ borderLeft: '4px solid var(--ta-purple)' }}>
-                  <div className="stat-label">Thời gian tiết kiệm</div>
-                  <div className="stat-val" style={{ color: 'var(--ta-purple)' }}>{announcementSaved}h</div>
-                  <div style={{ fontSize: '11px', color: 'var(--ta-text3)' }}>ROI từ thông báo tự động</div>
-                </div>
-              </div>
-
-              <div style={{ position: 'relative', marginBottom: '30px' }}>
-                <div className="tool-header-badge" style={{ background: 'linear-gradient(135deg, var(--ta-amber), #d97706)' }}>
-                  CÔNG CỤ TẠO THÔNG BÁO AI
-                </div>
-                <AnnouncementWorkflow 
-                  onGenerate={handleGenerateAnnouncement}
-                  loading={uploading}
-                  aiPreview={aiPreview}
-                  setAiPreview={setAiPreview}
-                  handleApprove={handleApproveSummary}
-                  handleSchedule={handleScheduleSummary}
-                  sendTime={sendTime}
-                  setSendTime={setSendTime}
-                  scheduleDate={scheduleDate}
-                  setScheduleDate={setScheduleDate}
-                />
-              </div>
-
-              {/* Announcement Queue - BOTTOM */}
-              {summaryQueue.filter(q => q.status === 'scheduled' && q.draft_type === 'announcement' && (selectedSpaceFilter === 'all' || q.space_id === selectedSpaceFilter)).length > 0 && (
-                <div className="ta-card-premium" style={{ marginTop: '30px' }}>
-                  <div className="card-head" style={{ padding: '18px 24px', borderBottom: '1px solid var(--ta-border)', color: 'var(--ta-amber)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <FiClock /> THÔNG BÁO ĐANG CHỜ GỬI
-                  </div>
-                  <div className="scheduled-list">
-                    {summaryQueue.filter(q => q.status === 'scheduled' && q.draft_type === 'announcement' && (selectedSpaceFilter === 'all' || q.space_id === selectedSpaceFilter)).map(item => (
-                      <div key={item.id} className="ta-list-row">
-                         <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 700, fontSize: '14px', color: 'var(--ta-text)' }}>Thông báo: {item.metadata?.purpose || 'Chung'}</div>
-                            <div style={{ fontSize: '12px', color: 'var(--ta-text3)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '15px' }}>
-                               <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><FiLayers size={13} /> {taSpaces.find(s => s.id === item.space_id)?.name}</span>
-                               <span style={{ color: 'var(--ta-amber)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                 <FiClock size={13} /> 
-                                 Dự kiến gửi: {new Date(item.scheduled_at).toLocaleString('vi-VN')}
-                               </span>
-                            </div>
-                         </div>
-                         <div style={{ display: 'flex', gap: '12px' }}>
-                            <button className="ta-btn" style={{ background: 'var(--ta-bg3)', border: '1px solid var(--ta-border)' }} onClick={() => {
-                              setAiPreview(item);
-                              setActiveTab('announcements');
-                            }}>
-                              <FiEdit3 style={{ marginRight: '6px' }} /> Xem/Sửa
-                            </button>
-                            <button className="ta-btn" style={{ background: 'var(--ta-red-bg)', color: 'var(--ta-red)', border: '1px solid var(--ta-red)33' }} onClick={() => handleCancelSchedule(item.id)}>
-                              <FiTrash2 />
-                            </button>
-                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeTab === 'settings' && (
-            <div className="animate-fade">
-              <div className="ta-card-premium" style={{ padding: '40px' }}>
-                <h2 style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '40px' }}>
-                  <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'var(--ta-accent-bg)', color: 'var(--ta-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <FiSettings size={20} />
-                  </div>
-                  <span style={{ fontSize: '20px', fontWeight: 800 }}>Cấu hình Intelligence Hub</span>
-                </h2>
-                
-                <div className="settings-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '50px' }}>
-                  <div className="setting-group">
-                    <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--ta-accent)', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '24px' }}>HỆ THỐNG GIÁM SÁT RỦI RO</div>
-                    <div className="setting-control" style={{ marginBottom: '30px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                        <label style={{ fontWeight: 700, fontSize: '14px' }}>Ngưỡng vắng mặt (Offline)</label>
-                        <span style={{ fontSize: '14px', color: 'var(--ta-accent)', fontWeight: 800 }}>{aiSettings.absenceThreshold} Giờ</span>
-                      </div>
-                      <input type="range" min="24" max="168" step="12" value={aiSettings.absenceThreshold} onChange={e => setAiSettings({...aiSettings, absenceThreshold: e.target.value})} style={{ width: '100%', accentColor: 'var(--ta-accent)', height: '6px', borderRadius: '3px' }} />
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', fontSize: '10px', color: 'var(--ta-text3)' }}>
-                        <span>24h</span>
-                        <span>72h (Mặc định)</span>
-                        <span>168h</span>
-                      </div>
-                    </div>
-                    <div className="setting-control">
-                      <label style={{ display: 'block', fontWeight: 700, marginBottom: '12px', fontSize: '14px' }}>Độ nhạy phân tích AI</label>
-                      <div style={{ 
-                        display: 'flex', 
-                        gap: '4px', 
-                        background: 'var(--ta-bg3)', 
-                        padding: '4px', 
-                        borderRadius: '12px',
-                        border: '1px solid var(--ta-border)'
-                      }}>
-                        {['Thấp', 'Vừa', 'Cao'].map(s => (
-                          <button key={s} 
-                            className={`filter-btn ${aiSettings.sensitivity === s ? 'active' : ''}`} 
-                            style={{ flex: 1, borderRadius: '8px', padding: '8px 0' }} 
-                            onClick={() => setAiSettings({...aiSettings, sensitivity: s})}
-                          >
-                            {s}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
- 
-                  <div className="setting-group">
-                    <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--ta-accent)', textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '24px' }}>TỰ ĐỘNG HÓA & PHÊ DUYỆT</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                      {[
-                        { id: 'autoScan', label: 'Tự động quét hàng ngày', desc: 'AI tự động tìm kiếm rủi ro vào 8:00 sáng' },
-                        { id: 'approvalMode', label: 'Chế độ phê duyệt thủ công', desc: 'Tất cả tin nhắn do AI soạn thảo cần có TA duyệt' }
-                      ].map(opt => (
-                        <div key={opt.id} style={{ 
-                          display: 'flex', 
-                          justifyContent: 'space-between', 
-                          alignItems: 'center', 
-                          padding: '16px',
-                          background: 'var(--ta-bg3)',
-                          borderRadius: '16px',
-                          border: '1px solid var(--ta-border)'
-                        }}>
-                          <div>
-                            <div style={{ fontWeight: 700, fontSize: '14px' }}>{opt.label}</div>
-                            <div style={{ fontSize: '12px', color: 'var(--ta-text3)', marginTop: '2px' }}>{opt.desc}</div>
-                          </div>
-                          <div style={{ position: 'relative', width: '40px', height: '22px' }}>
-                            <input 
-                              type="checkbox" 
-                              style={{ width: '100%', height: '100%', cursor: 'pointer', opacity: 1 }}
-                              checked={aiSettings[opt.id]} 
-                              onChange={() => setAiSettings({...aiSettings, [opt.id]: !aiSettings[opt.id]})} 
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
- 
-                <div style={{ marginTop: '50px', paddingTop: '30px', borderTop: '1px solid var(--ta-border)', display: 'flex', justifyContent: 'flex-end', gap: '15px' }}>
-                   <button className="ta-btn" style={{ background: 'transparent', border: '1px solid var(--ta-border)' }}>Khôi phục mặc định</button>
-                   <button className="vibrant-btn" onClick={() => alert('Cấu hình đã được lưu!')}>Lưu cấu hình hệ thống</button>
-                </div>
-              </div>
-            </div>
+            <AnnouncementWorkflow 
+              isHitlEnabled={aiConfig.isHitlEnabled}
+              onGenerate={async (p, c) => {
+                if (selectedSpaces.length === 0) return;
+                setIsAnalyzing(true);
+                try {
+                  const prompt = buildAnnouncementPrompt(p, c);
+                  const resAgent = await taService.callAgentChat(selectedSpaces[0], prompt, user?.display_name || 'TA');
+                  if (resAgent?.success && resAgent.answer) {
+                    const res = await taService.createSummaryDraft({
+                      spaceId: selectedSpaces[0], content: resAgent.answer, draft_type: 'announcement'
+                    });
+                    if (res.success) {
+                      setAiPreview(res.data);
+                      if (!aiConfig.isHitlEnabled) handleApproveSummary(res.data.id, res.data.space_id);
+                    }
+                  }
+                } catch (error) {} finally { setIsAnalyzing(false); }
+              }} 
+              loading={isAnalyzing} aiPreview={aiPreview} setAiPreview={setAiPreview} handleApprove={handleApproveSummary} handleSchedule={handleScheduleSummary}
+              scheduleDate={scheduleDate} setScheduleDate={setScheduleDate} selectedSpaces={selectedSpaces} setSelectedSpaces={setSelectedSpaces}
+              taSpaces={taSpaces} handleRefineAi={handleRefineAi}
+            />
           )}
 
           {activeTab === 'logs' && (
             <div className="animate-fade">
               <div className="ta-card-premium">
-                <div className="card-head" style={{ padding: '20px 24px', borderBottom: '1px solid var(--ta-border)', fontWeight: 800, fontSize: '13px', letterSpacing: '1px' }}>
-                  LỊCH SỬ HOẠT ĐỘNG HỆ THỐNG
+                <div className="card-head"><h3>Nhật ký hoạt động AI</h3></div>
+                <div className="ta-card-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+                  {actionLogs.length > 0 ? actionLogs.map((log, index) => (
+                    <div key={log.id || index} className="ta-list-row">
+                      <div className="flex-shrink-0">
+                        {log.ta?.avatar_url ? <img src={log.ta.avatar_url} alt="" className="ta-avatar-sm" /> : <div className="ta-avatar-sm-placeholder"><FiUser /></div>}
+                      </div>
+                      <div className="flex-1">
+                        <div style={{ fontSize: '14px', fontWeight: 600 }}>
+                          {log.ta?.display_name || 'Hệ thống'} 
+                          <span style={{ fontWeight: 400, color: 'var(--text-muted)', marginLeft: '8px' }}>
+                            {log.action_type === 'sent_dm' ? 'đã gửi tin nhắn cho' : log.action_type === 'approved_summary' ? 'đã duyệt tóm tắt' : log.action_type === 'dismissed_alert' ? 'đã bỏ qua cảnh báo' : log.action_type === 'sent_announcement' ? 'đã đăng thông báo' : log.action_type}
+                          </span>
+                          {log.student?.display_name && <span style={{ marginLeft: '8px', color: 'var(--primary)' }}>{log.student.display_name}</span>}
+                        </div>
+                        <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>{log.notes}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <FiClock size={10} /> {new Date(log.created_at).toLocaleString('vi-VN')}
+                        </div>
+                      </div>
+                    </div>
+                  )) : <div className="empty-state"><FiActivity size={48} style={{ opacity: 0.2, marginBottom: '16px' }} /><p>Chưa có nhật ký hoạt động nào</p></div>}
                 </div>
-                <div className="logs-list">
-                   {actionLogs.length === 0 ? (
-                     <div style={{ padding: '80px 0', textAlign: 'center', color: 'var(--ta-text3)' }}>
-                        <FiActivity size={48} style={{ opacity: 0.2, marginBottom: '16px' }} />
-                        <p>Chưa ghi nhận hoạt động nào</p>
-                     </div>
-                   ) : (
-                     actionLogs.map(log => (
-                       <div key={log.id} className="ta-list-row">
-                          <div style={{
-                            width: '40px', height: '40px', borderRadius: '12px', 
-                            background: log.action_type?.includes('alert') || log.action_type?.includes('dismissed') ? 'rgba(239, 68, 68, 0.08)' : 'rgba(124, 58, 237, 0.08)',
-                            color: log.action_type?.includes('alert') || log.action_type?.includes('dismissed') ? 'var(--ta-red)' : 'var(--ta-accent)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center'
-                          }}>
-                             {log.action_type?.includes('alert') || log.action_type?.includes('dismissed') ? <FiCheckCircle size={18} /> : <FiFileText size={18} />}
-                          </div>
-                          <div style={{ flex: 1 }}>
-                             <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--ta-text)' }}>{log.notes}</div>
-                             <div style={{ fontSize: '12px', color: 'var(--ta-text3)', marginTop: '2px' }}>Thực hiện bởi: <span style={{ color: 'var(--ta-text2)', fontWeight: 600 }}>{log.ta?.display_name || 'Hệ thống'}</span></div>
-                          </div>
-                          <div style={{ fontSize: '12px', color: 'var(--ta-text3)', background: 'var(--ta-bg3)', padding: '4px 12px', borderRadius: '8px', border: '1px solid var(--ta-border)' }}>
-                            {new Date(log.created_at).toLocaleString('vi-VN')}
-                          </div>
-                       </div>
-                     ))
-                   )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'settings' && (
+            <div className="animate-fade" style={{ display: 'flex', flexDirection: 'column', gap: '24px', padding: '24px 0', overflowY: 'auto', maxHeight: 'calc(100vh - 120px)' }}>
+              <div className="ta-card-premium">
+                <div className="card-head"><h3>Cấu hình Cơ chế Gửi</h3></div>
+                <div className="ta-card-body" style={{ padding: '24px' }}>
+                  <label className="flex items-center gap-3 cursor-pointer p-4 bg-surface-tertiary rounded-xl border border-primary/10 hover:bg-surface-secondary transition-colors">
+                    <input type="checkbox" className="w-5 h-5 accent-primary" checked={configDraft.isHitlEnabled} onChange={(e) => setConfigDraft({...configDraft, isHitlEnabled: e.target.checked})} />
+                    <div>
+                      <div style={{ fontSize: '14px', fontWeight: 600 }}>Yêu cầu phê duyệt trước khi gửi (HITL)</div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>AI sẽ tạo bản nháp và chờ bạn kiểm tra lại trước khi đăng vào lớp.</div>
+                    </div>
+                  </label>
                 </div>
+              </div>
+
+              <div className="ta-card-premium">
+                <div className="card-head"><h3>Hướng dẫn trả lời AI (Custom Instruction)</h3></div>
+                <div className="ta-card-body" style={{ padding: '24px' }}>
+                  <textarea className="ta-input" style={{ minHeight: '160px', resize: 'vertical', lineHeight: '1.6', fontSize: '14px' }} placeholder="Ví dụ: Hãy trả lời ngắn gọn..." value={configDraft.instruction} onChange={(e) => setConfigDraft({...configDraft, instruction: e.target.value})} />
+                </div>
+              </div>
+
+              <div className="ta-card-premium">
+                <div className="card-head"><h3>Cấu hình Recap AI</h3></div>
+                <div className="ta-card-body" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <div className="config-group">
+                    <label className="config-label">Xưng hô (Recap)</label>
+                    <input type="text" className="ta-input" value={configDraft.recap.pronouns} onChange={(e) => setConfigDraft({...configDraft, recap: {...configDraft.recap, pronouns: e.target.value}})} />
+                  </div>
+                  <div className="config-group">
+                    <label className="config-label">Giọng văn</label>
+                    <select className="modern-select" style={{ width: '100%' }} value={configDraft.recap.tone} onChange={(e) => setConfigDraft({...configDraft, recap: {...configDraft.recap, tone: e.target.value}})}>
+                      <option value="nhiệt huyết">Nhiệt huyết, năng lượng</option>
+                      <option value="chuyên nghiệp">Chuyên nghiệp, ngắn gọn</option>
+                      <option value="thân thiện">Thân thiện, gần gũi</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="ta-card-premium">
+                <div className="card-head"><h3>Cấu hình Thông báo AI</h3></div>
+                <div className="ta-card-body" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <div className="config-group">
+                    <label className="config-label">Xưng hô (Thông báo)</label>
+                    <input type="text" className="ta-input" value={configDraft.announcement.pronouns} onChange={(e) => setConfigDraft({...configDraft, announcement: {...configDraft.announcement, pronouns: e.target.value}})} />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', paddingBottom: '40px', gap: '12px' }}>
+                <button className="ta-btn" onClick={() => setConfigDraft(aiConfig)}>Huỷ các thay đổi chưa lưu</button>
+                <button className="ta-btn" onClick={() => setConfigDraft(DEFAULT_CONFIG)}>Khôi phục mặc định</button>
               </div>
             </div>
           )}
