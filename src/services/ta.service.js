@@ -56,6 +56,45 @@ const taService = {
     const response = await api.get(`/ta/at-risk-context/${snapshotId}?spaceId=${spaceId}`);
     return response.data;
   },
+
+  /**
+   * Cập nhật bản thảo tóm tắt
+   */
+  updateSummaryDraft: async (draftId, spaceId, updates) => {
+    const response = await api.patch(`/ta/summary-queue/${draftId}?spaceId=${spaceId}`, updates);
+    return response.data;
+  },
+
+  /**
+   * Gửi tin nhắn riêng thông minh (Agent)
+   */
+  sendSmartMessage: async (spaceId, dto) => {
+    const response = await api.post(`/ta/send-smart-message?spaceId=${spaceId}`, dto);
+    return response.data;
+  },
+
+  /**
+   * AI: Gọi Agent Chat (Tóm tắt hội thoại thực tế)
+   */
+  callAgentChat: async (spaceId, query, senderId) => {
+    const response = await api.post('/ta/agent/chat', { spaceId, query, senderId });
+    return response.data;
+  },
+
+  /**
+   * AI: Gọi Agent với File (PDF/Ảnh)
+   */
+  callAgentWithFile: async (spaceId, query, senderId, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post(`/ta/agent/chat-with-file?spaceId=${spaceId}&query=${encodeURIComponent(query)}&senderId=${encodeURIComponent(senderId)}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
   /**
    * Tải lên slide bài giảng
    */
@@ -85,6 +124,14 @@ const taService = {
    */
   cancelSchedule: async (draftId, spaceId) => {
     const response = await api.post(`/ta/summary-queue/${draftId}/cancel-schedule?spaceId=${spaceId}`);
+    return response.data;
+  },
+
+  /**
+   * AI: Tạo bản thảo tin nhắn thông minh dựa trên context rủi ro
+   */
+  generateSmartMessage: async (snapshotId, tone) => {
+    const response = await api.get(`/ta/agent/smart-message/${snapshotId}?tone=${tone}`);
     return response.data;
   },
 
