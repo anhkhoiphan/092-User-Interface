@@ -96,6 +96,18 @@ const taService = {
   },
 
   /**
+   * AI: Tạo biểu đồ từ phân tích chat (FastAPI endpoint)
+   */
+  summaryChart: async (conversationId, query, senderId) => {
+    const response = await api.post('/api/v1/summary_chart', {
+      conversation_id: conversationId,
+      query,
+      sender_id: senderId
+    });
+    return response.data;
+  },
+
+  /**
    * Tải lên slide bài giảng
    */
   uploadSlide: async (spaceId, file) => {
