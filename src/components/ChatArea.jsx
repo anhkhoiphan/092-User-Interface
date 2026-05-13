@@ -339,6 +339,7 @@ function ChatArea({
               conversationId: data.conversationId,
               userId: data.userId,
               isTyping: true,
+              isBot: data.isBot || false,
             }),
           );
         } else {
@@ -498,6 +499,9 @@ function ChatArea({
   // Typing indicator from other user
   const isOtherUserTyping = isDM && activeConversationId
     ? typingMap[activeConversationId]?.isTyping
+    : false;
+  const isBotTyping = isDM && activeConversationId
+    ? typingMap[activeConversationId]?.isBot
     : false;
   const otherTyping = isOtherUserTyping;
 
@@ -1098,7 +1102,9 @@ function ChatArea({
         disabled={!room}
         typingSender={
           isOtherUserTyping
-            ? dmUser?.name
+            ? isBotTyping
+              ? 'StudyBot'
+              : dmUser?.name
             : roomTypingUser
               ? roomTypingUser
               : null
