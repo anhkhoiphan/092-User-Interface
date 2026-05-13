@@ -38,11 +38,19 @@ const TADashboard = () => {
   const [selectedSpaceFilter, setSelectedSpaceFilter] = useState('all');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-  // Metrics
-  const criticalCountArr = atRiskList.filter(i => i.level === 'critical' || (i.metadata?.score || 0) >= 5);
-  const warningCountArr = atRiskList.filter(i => i.level === 'warning' || ((i.metadata?.score || 0) >= 2 && (i.metadata?.score || 0) < 5));
-  const resolvedCountArr = actionLogs.filter(l => l.action_type === 'dismissed_alert' || l.action_type === 'sent_dm');
-  const timeSavedVal = actionLogs.reduce((acc, log) => {
+  // Filter at-risk list by selected space
+  const filteredAtRiskList = selectedSpaceFilter === 'all'
+    ? atRiskList
+    : atRiskList.filter(item => item.space_id === selectedSpaceFilter);
+
+  // Metrics (use filtered list for charts)
+  const criticalCountArr = filteredAtRiskList.filter(i => i.level === 'critical' || (i.metadata?.score || 0) >= 5);
+  const warningCountArr = filteredAtRiskList.filter(i => i.level === 'warning' || ((i.metadata?.score || 0) >= 2 && (i.metadata?.score || 0) < 5));
+  const filteredActionLogs = selectedSpaceFilter === 'all'
+    ? actionLogs
+    : actionLogs.filter(log => log.space_id === selectedSpaceFilter);
+  const resolvedCountArr = filteredActionLogs.filter(l => l.action_type === 'dismissed_alert' || l.action_type === 'sent_dm');
+  const timeSavedVal = filteredActionLogs.reduce((acc, log) => {
     switch (log.action_type) {
       case 'lesson_recap': return acc + 30;
       case 'announcement': return acc + 15;
@@ -50,7 +58,7 @@ const TADashboard = () => {
       case 'dismissed_alert': return acc + 5;
       default: return acc + 5;
     }
-  }, 0); 
+  }, 0);
 
   const finalChartData = [
     { name: 'Nguy hiểm', value: criticalCountArr.length, color: 'var(--ta-red)' },
@@ -136,14 +144,14 @@ const TADashboard = () => {
     const r = aiConfig.recap;
     const pronouns = r.pronouns || g.pronouns;
     return `[ROLE] Bạn là một Trợ Giảng (Teaching Assistant) xuất sắc.
-[OBJECTIVE] Viết một bài Recap (Tóm tắt bài giảng) chất lượng cao.
+[OBJECTIVE] Phân tích nội dung buổi học và viết bài Recap chất lượng cao.
 [RULES]
 - Xưng hô bắt buộc: ${pronouns}.
 - Tone giọng: ${r.tone}.
 - Trọng tâm (Focus): ${r.highlight}.
 - Quy tắc chung:\\n${compileRules(g.rules)}\\n${g.instruction}
 - Quy tắc Recap:\\n${compileRules(r.rules)}\\n${r.instruction}
-[OUTPUT FORMAT] CHỈ xuất ra nội dung bài viết định dạng Markdown. TUYỆT ĐỐI KHÔNG kèm theo các câu giao tiếp của AI (như 'Đây là bài viết...', 'Vâng, tôi hiểu').`;
+[OUTPUT FORMAT] CHỈ xuất ra nội dung bài viết định dạng Markdown. TUYỆT ĐỐI KHÔNG kèm theo các câu giao tiếp của AI (như 'Đây là...', 'Vâng, tôi hiểu').`;
   };
 
   const buildAnnouncementPrompt = (p, c) => {
@@ -473,8 +481,8 @@ ${compileRules(g.rules)}
               <div className="ta-card-premium">
                 <div className="card-head"><h3>DANH SÁCH CẦN HỖ TRỢ</h3></div>
                 <div className="ta-card-body" style={{ padding: '8px 0' }}>
-                  {atRiskList.filter(item => selectedSpaceFilter === 'all' || item.space_id === selectedSpaceFilter).length > 0 ? (
-                    atRiskList.filter(item => selectedSpaceFilter === 'all' || item.space_id === selectedSpaceFilter).map(student => (
+                  {filteredAtRiskList.length > 0 ? (
+                    filteredAtRiskList.map(student => (
                       <RiskCard 
                         key={student.id} student={student} spaceName={taSpaces.find(s => s.id === student.space_id)?.name || spaces.find(s => s.id === student.space_id)?.name}
                         onResolve={handleResolveAlert} onGetContext={handleOpenCompose}
@@ -519,10 +527,14 @@ ${compileRules(g.rules)}
                         let resAgent;
                         if (uploadedFile && uploadedFile.rawFile) resAgent = await taService.callAgentWithFile(selectedSpaces[0], prompt, user?.id || 'TA', uploadedFile.rawFile);
                         else resAgent = await taService.callAgentChat(selectedSpaces[0], prompt, user?.id || 'TA');
-                        
+
                         const aiContent = resAgent?.answer || resAgent?.content || resAgent?.response;
                         if (resAgent?.success && aiContent) {
-                          const res = await taService.createSummaryDraft({ spaceId: selectedSpaces[0], content: aiContent, draft_type: 'lesson_recap' });
+                          const res = await taService.createSummaryDraft({
+                            spaceId: selectedSpaces[0],
+                            content: aiContent,
+                            draft_type: 'lesson_recap',
+                          });
                           if (res?.success) {
                             if (scheduleDate) handleScheduleSummary(res.data.id, res.data.space_id, scheduleDate, res.data);
                             else handleApproveSummary(res.data.id, res.data.space_id, res.data);
@@ -539,12 +551,17 @@ ${compileRules(g.rules)}
                     let resAgent;
                     if (uploadedFile && uploadedFile.rawFile) resAgent = await taService.callAgentWithFile(selectedSpaces[0], prompt, user?.id || 'TA', uploadedFile.rawFile);
                     else resAgent = await taService.callAgentChat(selectedSpaces[0], prompt, user?.id || 'TA');
-                    
+
                     const aiContent = resAgent?.answer || resAgent?.content || resAgent?.response;
                     if (resAgent?.success && aiContent) {
-                      const res = await taService.createSummaryDraft({ spaceId: selectedSpaces[0], content: aiContent, draft_type: 'lesson_recap' });
+                      const res = await taService.createSummaryDraft({
+                        spaceId: selectedSpaces[0],
+                        content: aiContent,
+                        draft_type: 'lesson_recap',
+                      });
                       if (res?.success) {
-                        setAiPreview(res.data); setCurrentStep(3); 
+                        setAiPreview(res.data);
+                        setCurrentStep(3);
                       }
                     } else { addToast('AI không phản hồi', 'error'); }
                   } catch (error) { addToast('Lỗi khi phân tích AI', 'error'); setCurrentStep(1); } finally { setIsAnalyzing(false); }
