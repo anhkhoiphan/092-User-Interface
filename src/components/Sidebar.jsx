@@ -8,7 +8,9 @@ import {
   openCreateSpace,
   openSettings,
   closeSettings,
+  navigateToDashboard,
 } from "../store/slices/appSlice";
+import { FiBarChart2 } from "react-icons/fi";
 
 
 function Sidebar() {
@@ -20,7 +22,7 @@ function Sidebar() {
   const { spaces, loading: spacesLoading, spacesFetched } = useSelector(
     (state) => state.space,
   );
-  const { isAuthenticated } = useSelector((state) => state.auth);
+  const { isAuthenticated, user } = useSelector((state) => state.auth);
   const currentView = isSettings ? "settings" : activeView;
 
   console.log("[Sidebar] Render - spaces count:", spaces.length, "spacesLoading:", spacesLoading, "spaces:", spaces.map(s => ({ id: s.id, name: s.name })));
@@ -38,6 +40,14 @@ function Sidebar() {
           }}
           unreadCount={totalUnreadCount}
         />
+        <SpaceIcon
+          icon="dashboard"
+          isActive={currentView === "dashboard"}
+          hasNotification={false}
+          onClick={() => dispatch(navigateToDashboard())}
+          title="TA Management Center"
+        />
+        <div className="w-8 h-[1px] my-1" style={{ background: "var(--border-primary)" }} />
         {spaces.map((space) => (
           <SpaceIcon
             key={space.id}

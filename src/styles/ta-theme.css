@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ta-outline: #757684;
+  --color-ta-secondary-fixed: #e1e0ff;
+  --color-ta-on-secondary-fixed-variant: #2f2ebe;
+  --color-ta-inverse-surface: #2d3133;
+  --color-ta-on-primary-fixed-variant: #293ca0;
+  --color-ta-on-primary: #ffffff;
+  --color-ta-inverse-primary: #bac3ff;
+  --color-ta-surface: #f7f9fb;
+  --color-ta-primary-container: #3f51b5;
+  --color-ta-on-secondary-fixed: #07006c;
+  --color-ta-secondary-container: #6063ee;
+  --color-ta-outline-variant: #c5c5d4;
+  --color-ta-on-secondary-container: #fffbff;
+  --color-ta-secondary: #4648d4;
+  --color-ta-background: #f7f9fb;
+  --color-ta-primary: #24389c;
+  --color-ta-surface-container-lowest: #ffffff;
+  --color-ta-surface-tint: #4355b9;
+  --color-ta-tertiary-fixed-dim: #ffb784;
+  --color-ta-tertiary-container: #8f4700;
+  --color-ta-surface-container-low: #f2f4f6;
+  --color-ta-on-primary-fixed: #00105c;
+  --color-ta-surface-variant: #e0e3e5;
+  --color-ta-on-primary-container: #cacfff;
+  --color-ta-on-tertiary-fixed-variant: #713700;
+  --color-ta-tertiary: #6c3400;
+  --color-ta-inverse-on-surface: #eff1f3;
+  --color-ta-surface-container-highest: #e0e3e5;
+  --color-ta-surface-dim: #d8dadc;
+  --color-ta-on-tertiary-container: #ffc7a2;
+  --color-ta-error: #ba1a1a;
+  --color-ta-on-tertiary-fixed: #301400;
+  --color-ta-on-background: #191c1e;
+  --color-ta-on-surface-variant: #454652;
+  --color-ta-secondary-fixed-dim: #c0c1ff;
+  --color-ta-error-container: #ffdad6;
+  --color-ta-surface-container-high: #e6e8ea;
+  --color-ta-surface-container: #eceef0;
+  --color-ta-on-secondary: #ffffff;
+  --color-ta-primary-fixed: #dee0ff;
+  --color-ta-on-error: #ffffff;
+  --color-ta-primary-fixed-dim: #bac3ff;
+  --color-ta-on-tertiary: #ffffff;
+  --color-ta-on-surface: #191c1e;
+  --color-ta-tertiary-fixed: #ffdcc6;
+  --color-ta-surface-bright: #f7f9fb;
+  --color-ta-on-error-container: #93000a;
+
+  --spacing-sidebar: 260px;
+  --spacing-container-gutter: 24px;
+}
+
+.ambient-shadow {
+  box-shadow: 0px 4px 15px rgba(36, 56, 156, 0.04);
+}
+
+.ai-gradient-bg {
+  background: linear-gradient(135deg, rgba(225, 224, 255, 0.4) 0%, rgba(247, 249, 251, 1) 100%);
+}
+
+.shadow-soft { 
+  box-shadow: 0 4px 15px rgba(36, 56, 156, 0.04); 
+}
+
+.shadow-popover { 
+  box-shadow: 0 8px 30px rgba(36, 56, 156, 0.08); 
+}
