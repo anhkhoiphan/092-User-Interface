@@ -60,7 +60,7 @@ export function renderMessageWithMentions(
   // Add remaining text
   if (lastIndex < content.length) {
     parts.push(
-      <span key={`text-end-${lastIndex}`} className="whitespace-pre-wrap ">
+      <span key={`text-end-${lastIndex}`}>
         <ReactMarkdown>{content.substring(lastIndex)}</ReactMarkdown>
       </span>,
     );
