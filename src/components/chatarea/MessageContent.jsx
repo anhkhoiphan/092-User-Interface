@@ -1,10 +1,16 @@
 import { getUserColor } from "../../utils/userColor.js";
+import ReactMarkdown from "react-markdown";
 
 /**
  * Render message content with @ mentions as styled tags
  * Uses a simple color hash for unknown users instead of mock data
  */
-export function renderMessageWithMentions(content, isDark, onShowProfile, isBot = false) {
+export function renderMessageWithMentions(
+  content,
+  isDark,
+  onShowProfile,
+  isBot = false,
+) {
   if (!content) return content;
 
   // Regex to match @username patterns (only letters, numbers, underscores - no spaces)
@@ -54,7 +60,9 @@ export function renderMessageWithMentions(content, isDark, onShowProfile, isBot 
   // Add remaining text
   if (lastIndex < content.length) {
     parts.push(
-      <span key={`text-end-${lastIndex}`}>{content.substring(lastIndex)}</span>,
+      <span key={`text-end-${lastIndex}`} className="whitespace-pre-wrap ">
+        <ReactMarkdown>{content.substring(lastIndex)}</ReactMarkdown>
+      </span>,
     );
   }
 

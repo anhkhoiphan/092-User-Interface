@@ -102,7 +102,12 @@ function ChatMessage({
           className="text-sm leading-relaxed"
           style={{ color: "var(--text-primary)" }}
         >
-          {renderMessageWithMentions(msg.content, isDark, onShowProfile, msg.isBot)}
+          {renderMessageWithMentions(
+            msg.content,
+            isDark,
+            onShowProfile,
+            msg.isBot,
+          )}
           {msg.isEdited && (
             <span
               className="ml-1 text-[10px] italic"
@@ -155,11 +160,11 @@ function ChatMessage({
 
 function TypingIndicator({ isDark, senderName = "Đang nhập" }) {
   return (
-    <div className="flex items-center gap-2 px-4 py-1.5" style={{ background: "transparent" }}>
-      <span
-        className="text-xs italic"
-        style={{ color: "var(--primary)" }}
-      >
+    <div
+      className="flex items-center gap-2 px-4 py-1.5"
+      style={{ background: "transparent" }}
+    >
+      <span className="text-xs italic" style={{ color: "var(--primary)" }}>
         {senderName} đang nhập
       </span>
       <span className="flex gap-0.5">
@@ -359,7 +364,10 @@ function ChatMessages({
         hasMoreMessagesRef.current
       ) {
         // DM pagination
-        if (conversationId && !conversationId.toString().startsWith("temp-conv-")) {
+        if (
+          conversationId &&
+          !conversationId.toString().startsWith("temp-conv-")
+        ) {
           setIsLoadingMore(true);
           const nextPage = currentPage + 1;
           dispatch(
@@ -454,18 +462,30 @@ function ChatMessages({
               <div className="flex items-center gap-1">
                 <div
                   className="w-1.5 h-1.5 rounded-full animate-pulse"
-                  style={{ background: "var(--primary)", animationDelay: "0ms" }}
+                  style={{
+                    background: "var(--primary)",
+                    animationDelay: "0ms",
+                  }}
                 />
                 <div
                   className="w-1.5 h-1.5 rounded-full animate-pulse"
-                  style={{ background: "var(--primary)", animationDelay: "150ms" }}
+                  style={{
+                    background: "var(--primary)",
+                    animationDelay: "150ms",
+                  }}
                 />
                 <div
                   className="w-1.5 h-1.5 rounded-full animate-pulse"
-                  style={{ background: "var(--primary)", animationDelay: "300ms" }}
+                  style={{
+                    background: "var(--primary)",
+                    animationDelay: "300ms",
+                  }}
                 />
               </div>
-              <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+              <span
+                className="text-[10px]"
+                style={{ color: "var(--text-muted)" }}
+              >
                 Đang cập nhật...
               </span>
             </div>
