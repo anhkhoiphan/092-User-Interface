@@ -144,14 +144,89 @@ const TADashboard = () => {
     const r = aiConfig.recap;
     const pronouns = r.pronouns || g.pronouns;
     return `[ROLE] Bạn là một Trợ Giảng (Teaching Assistant) xuất sắc.
-[OBJECTIVE] Phân tích nội dung buổi học và viết bài Recap chất lượng cao.
+[OBJECTIVE] Phân tích nội dung buổi học và trả về dữ liệu có cấu trúc gồm: tóm tắt bài giảng + danh sách deadline.
 [RULES]
 - Xưng hô bắt buộc: ${pronouns}.
 - Tone giọng: ${r.tone}.
 - Trọng tâm (Focus): ${r.highlight}.
 - Quy tắc chung:\\n${compileRules(g.rules)}\\n${g.instruction}
 - Quy tắc Recap:\\n${compileRules(r.rules)}\\n${r.instruction}
-[OUTPUT FORMAT] CHỈ xuất ra nội dung bài viết định dạng Markdown. TUYỆT ĐỐI KHÔNG kèm theo các câu giao tiếp của AI (như 'Đây là...', 'Vâng, tôi hiểu').`;
+[OUTPUT FORMAT] Bắt buộc trả về valid JSON với cấu trúc sau:
+{
+  "summary": "Nội dung tóm tắt bài giảng định dạng Markdown",
+  "deadlines": [
+    { "title": "Tên bài tập", "due_date": "YYYY-MM-DD hoặc mô tả ngày", "description": "Mô tả ngắn về yêu cầu" }
+  ]
+}
+TUYỆT ĐỐI KHÔNG thêm bất kỳ nội dung nào khác ngoài JSON (không có markdown code blocks, không có lời giải thích).`;
+  };
+
+  // Parse AI JSON response with fallback to text extraction
+  const parseAiRecapResponse = (aiContent) => {
+    if (!aiContent) return { summary: '', deadlines: [] };
+
+    // Extract deadlines from text using regex (for fallback)
+    const extractDeadlinesFromText = (content) => {
+      const patterns = [
+        /[-•*]\s*.*?(?:bài tập|homework|assignment|deadline|hạn|nộp|due date|làm|chuẩn bị).*?(?:\n|$)/gi,
+        /[-•*]\s*(?:đóng|gửi|submit).*?(?:bài|file|nội dung).*?(?:\n|$)/gi,
+        /\d{1,2}[\/-]\d{1,2}(?:\/\d{2,4})?\s*[.:]\s*.+?[\n]/gi
+      ];
+      const deadlines = new Set();
+      for (const pattern of patterns) {
+        const matches = content.match(pattern);
+        if (matches) {
+          matches.forEach(match => {
+            const cleanMatch = match.trim()
+              .replace(/^[-•*]\s*/, '')
+              .replace(/\s+/g, ' ')
+              .slice(0, 150);
+            if (cleanMatch.length > 8 && cleanMatch.length < 151) {
+              deadlines.add(cleanMatch);
+            }
+          });
+        }
+      }
+      return Array.from(deadlines).slice(0, 5);
+    };
+
+    try {
+      // Extract JSON from code blocks first (handle ```json ... ```)
+      let jsonStr = aiContent.trim();
+      const codeBlockMatch = aiContent.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (codeBlockMatch && codeBlockMatch[1]) {
+        jsonStr = codeBlockMatch[1].trim();
+      }
+
+      const parsed = JSON.parse(jsonStr);
+
+      // Validate structure
+      if (parsed.summary && Array.isArray(parsed.deadlines)) {
+        return {
+          summary: parsed.summary,
+          deadlines: parsed.deadlines
+            .filter(d => d?.title && d?.due_date)
+            .map(d => ({
+              title: d.title,
+              due_date: d.due_date,
+              description: d.description || ''
+            }))
+        };
+      }
+    } catch (e) {
+      // JSON parse failed, fall back to text extraction
+      console.warn('Failed to parse AI JSON response, using fallback extraction');
+    }
+
+    // Fallback: return raw content with extracted deadlines from text
+    return {
+      summary: aiContent,
+      deadlines: extractDeadlinesFromText(aiContent).map(text => ({
+        title: text,
+        due_date: '',
+        description: ''
+      }))
+    };
   };
 
   const buildAnnouncementPrompt = (p, c) => {
@@ -222,7 +297,10 @@ const TADashboard = () => {
         addToast('Đã giải quyết');
         fetchData();
       }
-    } catch (error) {}
+    } catch (error) {
+      console.error('handleResolveAlert error:', error);
+      addToast('Lỗi giải quyết cảnh báo', 'error');
+    }
   };
 
   const handleApproveSummary = async (draftId, spaceId, autoPilotData = null) => {
@@ -230,18 +308,26 @@ const TADashboard = () => {
     try {
       const activeContent = autoPilotData?.content || aiPreview?.content || '';
       const activeType = autoPilotData?.draft_type || aiPreview?.draft_type || '';
+      const activeDeadlines = autoPilotData?.metadata?.deadlines || aiPreview?.deadlines || [];
 
       if (aiPreview?.id === draftId) await taService.updateSummaryDraft(draftId, spaceId, { content: activeContent });
       const res = await taService.approveSummary(draftId, spaceId);
-      if (res.success && selectedSpaces.length > 1 && (!aiPreview || aiPreview.status === 'pending')) {
+      if (!res.success) {
+        console.error('Approve summary failed:', res);
+        throw new Error('API returned failure');
+      }
+      if (selectedSpaces.length > 1 && (!aiPreview || aiPreview.status === 'pending')) {
         const otherSpaces = selectedSpaces.filter(id => id !== spaceId);
         await Promise.all(otherSpaces.map(async (sid) => {
-          const newDraftRes = await taService.createSummaryDraft({ spaceId: sid, content: activeContent, draft_type: activeType });
+          const newDraftRes = await taService.createSummaryDraft({ spaceId: sid, content: activeContent, draft_type: activeType, metadata: { deadlines: activeDeadlines } });
           if (newDraftRes?.success) await taService.approveSummary(newDraftRes.data.id, sid);
         }));
       }
       addToast('Đã đăng bài!'); fetchData(); setAiPreview(null); setCurrentStep(1);
-    } catch (error) { addToast('Lỗi gửi bài', 'error'); } finally { setIsSending(false); }
+    } catch (error) {
+      console.error('handleApproveSummary error:', error);
+      addToast(error.message || 'Lỗi gửi bài', 'error');
+    } finally { setIsSending(false); }
   };
 
   const handleScheduleSummary = async (draftId, spaceId, scheduledAt, autoPilotData = null) => {
@@ -249,6 +335,7 @@ const TADashboard = () => {
     try {
       const activeContent = autoPilotData?.content || aiPreview?.content || '';
       const activeType = autoPilotData?.draft_type || aiPreview?.draft_type || '';
+      const activeDeadlines = autoPilotData?.metadata?.deadlines || aiPreview?.deadlines || [];
 
       if (aiPreview?.id === draftId) await taService.updateSummaryDraft(draftId, spaceId, { content: activeContent });
       const isoDate = new Date(scheduledAt).toISOString();
@@ -257,17 +344,25 @@ const TADashboard = () => {
       if (res.success && selectedSpaces.length > 1 && (!aiPreview || aiPreview.status === 'pending')) {
         const otherSpaces = selectedSpaces.filter(id => id !== spaceId);
         await Promise.all(otherSpaces.map(async (sid) => {
-          const newDraftRes = await taService.createSummaryDraft({ spaceId: sid, content: activeContent, draft_type: activeType });
+          const newDraftRes = await taService.createSummaryDraft({ spaceId: sid, content: activeContent, draft_type: activeType, metadata: { deadlines: activeDeadlines } });
           if (newDraftRes?.success) await taService.scheduleSummary(newDraftRes.data.id, sid, isoDate);
         }));
       }
       
       addToast('Đã đặt lịch!'); fetchData(); setAiPreview(null); setCurrentStep(1);
-    } catch (error) {} finally { setIsSending(false); }
+    } catch (error) {
+      console.error('handleScheduleSummary error:', error);
+      addToast(error.message || 'Lỗi đặt lịch', 'error');
+    } finally { setIsSending(false); }
   };
 
   const handleEditScheduled = (item) => {
-    setAiPreview(item);
+    // Normalize: add top-level deadlines from metadata for consistent extraction
+    const normalizedItem = {
+      ...item,
+      deadlines: item.metadata?.deadlines || []
+    };
+    setAiPreview(normalizedItem);
     setSelectedSpaces([item.space_id]);
     if (item.draft_type === 'lesson_recap') { setActiveTab('summary'); setCurrentStep(3); }
     else { setActiveTab('announcements'); }
@@ -283,7 +378,10 @@ const TADashboard = () => {
       }));
       addToast('Đã hủy lịch hàng loạt');
       fetchData();
-    } catch (e) {} finally { setIsSending(false); }
+    } catch (e) {
+      console.error('handleBulkCancel error:', e);
+      addToast('Lỗi hủy lịch hàng loạt', 'error');
+    } finally { setIsSending(false); }
   };
 
   const handleBulkSendNow = async (ids) => {
@@ -295,7 +393,10 @@ const TADashboard = () => {
       }));
       addToast('Đã gửi hàng loạt');
       fetchData();
-    } catch (e) {} finally { setIsSending(false); }
+    } catch (e) {
+      console.error('handleBulkSendNow error:', e);
+      addToast('Lỗi gửi hàng loạt', 'error');
+    } finally { setIsSending(false); }
   };
 
   const handleCancelSchedule = async (draftId, spaceId) => {
@@ -303,7 +404,10 @@ const TADashboard = () => {
       setIsSending(true);
       const res = await taService.cancelSchedule(draftId, spaceId);
       if (res.success) { addToast('Đã hủy lịch'); fetchData(); }
-    } catch (error) {} finally { setIsSending(false); }
+    } catch (error) {
+      console.error('handleCancelSchedule error:', error);
+      addToast('Lỗi hủy lịch', 'error');
+    } finally { setIsSending(false); }
   };
 
   const handleRefineAi = async (refineInstruction) => {
@@ -333,7 +437,10 @@ ${compileRules(g.rules)}
           addToast('Đã cập nhật bản thảo!');
         }
       } else { addToast('AI không phản hồi lệnh sửa', 'error'); }
-    } catch (error) { addToast('Lỗi hiệu chỉnh AI', 'error'); } finally { setIsAnalyzing(false); }
+    } catch (error) {
+      console.error('handleRefineAi error:', error);
+      addToast('Lỗi hiệu chỉnh AI', 'error');
+    } finally { setIsAnalyzing(false); }
   };
 
   const handleOpenCompose = async (snapshotId, spaceId) => {
@@ -344,7 +451,10 @@ ${compileRules(g.rules)}
         setCurrentContext({ id: snapshotId, space_id: spaceId, ...res.data, aiConfig, taName: user?.display_name });
         setIsComposeOpen(true);
       }
-    } catch (error) {} finally { setLoading(false); }
+    } catch (error) {
+      console.error('handleOpenCompose error:', error);
+      addToast('Lỗi mở compose', 'error');
+    } finally { setLoading(false); }
   };
 
   const handleAiSend = async (message) => {
@@ -356,7 +466,10 @@ ${compileRules(g.rules)}
         content: message, snapshotId: currentContext.id
       });
       if (res.success) { setIsComposeOpen(false); handleResolveAlert(currentContext.id, currentContext.space_id); addToast('Đã gửi tin nhắn!'); }
-    } catch (error) {} finally { setLoading(false); }
+    } catch (error) {
+      console.error('handleAiSend error:', error);
+      addToast('Lỗi gửi tin nhắn', 'error');
+    } finally { setLoading(false); }
   };
 
   const RuleCheckbox = ({ label, checked, onChange }) => (
@@ -512,7 +625,10 @@ ${compileRules(g.rules)}
                   try {
                     const res = await taService.uploadSlide(selectedSpaces[0], file);
                     if (res.success) setUploadedFile({ ...res.data, rawFile: file });
-                  } catch (error) {} finally { setUploading(false); }
+                  } catch (error) {
+                    console.error('handleFileUpload error:', error);
+                    addToast('Lỗi tải file lên', 'error');
+                  } finally { setUploading(false); }
                 }} 
                 startAiAnalysis={async () => {
                   if (selectedSpaces.length === 0) return;
@@ -530,10 +646,14 @@ ${compileRules(g.rules)}
 
                         const aiContent = resAgent?.answer || resAgent?.content || resAgent?.response;
                         if (resAgent?.success && aiContent) {
+                          // Parse structured JSON response
+                          const parsed = parseAiRecapResponse(aiContent);
+
                           const res = await taService.createSummaryDraft({
                             spaceId: selectedSpaces[0],
-                            content: aiContent,
+                            content: parsed.summary,
                             draft_type: 'lesson_recap',
+                            metadata: { deadlines: parsed.deadlines }
                           });
                           if (res?.success) {
                             if (scheduleDate) handleScheduleSummary(res.data.id, res.data.space_id, scheduleDate, res.data);
@@ -554,13 +674,17 @@ ${compileRules(g.rules)}
 
                     const aiContent = resAgent?.answer || resAgent?.content || resAgent?.response;
                     if (resAgent?.success && aiContent) {
+                      // Parse structured JSON response
+                      const parsed = parseAiRecapResponse(aiContent);
+
                       const res = await taService.createSummaryDraft({
                         spaceId: selectedSpaces[0],
-                        content: aiContent,
+                        content: parsed.summary,
                         draft_type: 'lesson_recap',
+                        metadata: { deadlines: parsed.deadlines }
                       });
                       if (res?.success) {
-                        setAiPreview(res.data);
+                        setAiPreview({ ...res.data, deadlines: parsed.deadlines });
                         setCurrentStep(3);
                       }
                     } else { addToast('AI không phản hồi', 'error'); }
@@ -612,7 +736,10 @@ ${compileRules(g.rules)}
                         setAiPreview(res.data); 
                       }
                     } else { addToast('AI không phản hồi', 'error'); }
-                  } catch (error) { addToast('Lỗi khi soạn thông báo', 'error'); } finally { setIsAnalyzing(false); }
+                  } catch (error) {
+      console.error('Announcement AI error:', error);
+      addToast('Lỗi khi soạn thông báo', 'error');
+    } finally { setIsAnalyzing(false); }
                 }} 
                 loading={isAnalyzing} aiPreview={aiPreview} setAiPreview={setAiPreview} handleApprove={handleApproveSummary} handleSchedule={handleScheduleSummary}
                 scheduleDate={scheduleDate} setScheduleDate={setScheduleDate} selectedSpaces={selectedSpaces} setSelectedSpaces={setSelectedSpaces}

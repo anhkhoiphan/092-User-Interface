@@ -355,6 +355,49 @@
   border-radius: 12px;
 }
 
+/* Processing overlay với card trắng (dành cho Recap Workflow) */
+.processing-overlay-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(147, 197, 253, 0.25) 100%);
+  backdrop-filter: blur(4px);
+  z-index: 100;
+  border-radius: 12px;
+}
+
+.processing-card-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 32px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(59, 130, 246, 0.2);
+}
+
+.processing-card-title {
+  margin: 0;
+  font-weight: 700;
+  font-size: 16px;
+  color: #1e3a8a;
+  font-family: inherit;
+}
+
+.processing-card-text {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #4b5563;
+  font-family: inherit;
+}
+
 /* Toast Notification */
 .toast-container {
   position: fixed;

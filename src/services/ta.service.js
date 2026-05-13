@@ -37,6 +37,15 @@ const taService = {
    * Duyệt bản tóm tắt
    */
   approveSummary: async (draftId, spaceId) => {
+    console.log('=== approveSummary DEBUG ===');
+    console.log('draftId:', draftId, 'type:', typeof draftId);
+    console.log('spaceId:', spaceId, 'type:', typeof spaceId);
+    console.log('URL:', `/ta/summary-queue/${draftId}/approve?spaceId=${spaceId}`);
+
+    if (!draftId || !spaceId) {
+      throw new Error(`Invalid IDs: draftId=${draftId}, spaceId=${spaceId}`);
+    }
+
     const response = await api.post(`/ta/summary-queue/${draftId}/approve?spaceId=${spaceId}`);
     return response.data;
   },

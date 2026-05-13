@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quiz Mockup - Option A (Inline Quiz Generation)</title>
+  <style>
+    :root {
+      --primary: #3b82f6;
+      --primary-active: #2563eb;
+      --bg-surface: #ffffff;
+      --bg-surface-secondary: #f8fafc;
+      --bg-surface-tertiary: #f1f5f9;
+      --text-primary: #1e293b;
+      --text-secondary: #475569;
+      --text-muted: #94a3b8;
+      --border-primary: #e2e8f0;
+      --ta-red: #ef4444;
+      --ta-red-bg: rgba(239, 68, 68, 0.1);
+      --ta-amber: #f59e0b;
+      --ta-amber-bg: rgba(245, 158, 11, 0.1);
+      --ta-blue: #3b82f6;
+      --ta-blue-bg: rgba(59, 130, 246, 0.1);
+      --ta-green: #10b981;
+      --ta-green-bg: rgba(16, 185, 129, 0.1);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: var(--bg-surface-secondary);
+      color: var(--text-primary);
+      line-height: 1.5;
+    }
+
+    .mockup-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 40px 24px;
+    }
+
+    .mockup-header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .mockup-header h1 {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 8px;
+    }
+
+    .mockup-header p {
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+
+    .option-badge {
+      display: inline-block;
+      padding: 6px 16px;
+      background: var(--primary);
+      color: white;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    /* Main Card Container */
+    .quiz-container {
+      background: var(--bg-surface-secondary);
+      border: 1px solid var(--border-primary);
+      border-radius: 12px;
+      overflow: hidden;
+      height: 800px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header */
+    .quiz-header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border-primary);
+      background: var(--bg-surface-tertiary);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .quiz-header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .quiz-icon {
+      width: 32px;
+      height: 32px;
+      background: var(--primary);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+    }
+
+    .quiz-title h3 {
+      font-size: 15px;
+      font-weight: 700;
+      margin: 0;
+    }
+
+    .quiz-title p {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .quiz-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .quiz-btn {
+      padding: 6px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border-primary);
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .quiz-btn:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    .quiz-btn.primary {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+    }
+
+    /* Score Summary Bar */
+    .score-bar {
+      padding: 16px 24px;
+      background: linear-gradient(135deg, var(--ta-blue-bg) 0%, rgba(59, 130, 246, 0.05) 100%);
+      border-bottom: 1px solid var(--border-primary);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .score-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .score-circle {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: var(--primary);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
+
+    .score-number {
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .score-label {
+      font-size: 10px;
+      font-weight: 600;
+      opacity: 0.9;
+    }
+
+    .score-stats {
+      display: flex;
+      gap: 24px;
+    }
+
+    .stat-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .stat-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .stat-dot.correct { background: var(--ta-green); }
+    .stat-dot.wrong { background: var(--ta-red); }
+    .stat-dot.pending { background: var(--text-muted); }
+
+    .stat-text {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .stat-value {
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .progress-bar {
+      width: 200px;
+      height: 8px;
+      background: var(--bg-surface);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary) 0%, var(--ta-green) 100%);
+      border-radius: 4px;
+      transition: width 0.3s;
+    }
+
+    .progress-text {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-left: 8px;
+    }
+
+    /* Quiz Content Area */
+    .quiz-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+    }
+
+    .quiz-content::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .quiz-content::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .quiz-content::-webkit-scrollbar-thumb {
+      background: var(--border-primary);
+      border-radius: 10px;
+    }
+
+    /* Question Card */
+    .question-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-primary);
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin-bottom: 16px;
+      transition: all 0.2s;
+    }
+
+    .question-card:hover {
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    }
+
+    .question-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .question-number {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      background: var(--bg-surface-tertiary);
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .question-text {
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.5;
+      flex: 1;
+    }
+
+    .question-card.correct .question-number {
+      background: var(--ta-green-bg);
+      color: var(--ta-green);
+    }
+
+    .question-card.wrong .question-number {
+      background: var(--ta-red-bg);
+      color: var(--ta-red);
+    }
+
+    .question-card.pending .question-number {
+      background: var(--bg-surface-tertiary);
+      color: var(--text-muted);
+    }
+
+    /* Options */
+    .options-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .option-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border: 1px solid var(--border-primary);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: var(--bg-surface-tertiary);
+    }
+
+    .option-item:hover {
+      border-color: var(--primary);
+      background: var(--ta-blue-bg);
+    }
+
+    .option-item.selected {
+      border-color: var(--primary);
+      background: var(--ta-blue-bg);
+    }
+
+    .option-item.correct-answer {
+      border-color: var(--ta-green);
+      background: var(--ta-green-bg);
+    }
+
+    .option-item.wrong-answer {
+      border-color: var(--ta-red);
+      background: var(--ta-red-bg);
+    }
+
+    .option-letter {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--bg-surface);
+      border: 2px solid var(--border-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .option-item.correct-answer .option-letter {
+      background: var(--ta-green);
+      border-color: var(--ta-green);
+      color: white;
+    }
+
+    .option-item.wrong-answer .option-letter {
+      background: var(--ta-red);
+      border-color: var(--ta-red);
+      color: white;
+    }
+
+    .option-text {
+      flex: 1;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .option-feedback {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .feedback-icon {
+      font-size: 16px;
+    }
+
+    .feedback-correct {
+      color: var(--ta-green);
+    }
+
+    .feedback-wrong {
+      color: var(--ta-red);
+    }
+
+    /* Topic Badge */
+    .topic-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      background: var(--ta-amber-bg);
+      border-radius: 12px;
+      font-size: 11px;
+      color: var(--ta-amber);
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+
+    /* Footer */
+    .quiz-footer {
+      padding: 16px 24px;
+      border-top: 1px solid var(--border-primary);
+      background: var(--bg-surface-tertiary);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .footer-info {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .question-count {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .question-count strong {
+      color: var(--text-primary);
+    }
+
+    .footer-actions {
+      display: flex;
+      gap: 12px;
+    }
+
+    .action-btn {
+      padding: 10px 20px;
+      border-radius: 8px;
+      border: none;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+
+    .action-btn.secondary {
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+      border: 1px solid var(--border-primary);
+    }
+
+    .action-btn.secondary:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    .action-btn.primary {
+      background: var(--primary);
+      color: white;
+    }
+
+    .action-btn.primary:hover {
+      background: var(--primary-active);
+    }
+
+    /* Explanation Box */
+    .explanation-box {
+      margin-top: 12px;
+      padding: 12px 16px;
+      background: var(--bg-surface-tertiary);
+      border-left: 3px solid var(--primary);
+      border-radius: 0 8px 8px 0;
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+
+    .explanation-title {
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 4px;
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .mockup-container {
+        padding: 20px;
+      }
+
+      .score-bar {
+        flex-wrap: wrap;
+        gap: 16px;
+      }
+
+      .progress-bar {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="mockup-container">
+    <div class="mockup-header">
+      <span class="option-badge">OPTION A</span>
+      <h1>Inline Quiz Generation</h1>
+      <p>Quiz questions are generated immediately when recap is created. Users answer and see results instantly.</p>
+    </div>
+
+    <div class="quiz-container">
+      <!-- Header -->
+      <div class="quiz-header">
+        <div class="quiz-header-left">
+          <div class="quiz-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+            </svg>
+          </div>
+          <div class="quiz-title">
+            <h3>Quiz - Bài giảng hoy</h3>
+            <p>Machine Learning Basics</p>
+          </div>
+        </div>
+        <div class="quiz-actions">
+          <button class="quiz-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+              <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+              <path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+            </svg>
+            Xem lại
+          </button>
+          <button class="quiz-btn primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+              <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+            </svg>
+            Xuất kết quả
+          </button>
+        </div>
+      </div>
+
+      <!-- Score Summary Bar -->
+      <div class="score-bar">
+        <div class="score-left">
+          <div class="score-circle">
+            <span class="score-number">85</span>
+            <span class="score-label">/100</span>
+          </div>
+          <div class="score-stats">
+            <div class="stat-item">
+              <div class="stat-dot correct"></div>
+              <div class="stat-text">
+                <div class="stat-value">17</div>
+                <div class="stat-label">Đúng</div>
+              </div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-dot wrong"></div>
+              <div class="stat-text">
+                <div class="stat-value">3</div>
+                <div class="stat-label">Sai</div>
+              </div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-dot pending"></div>
+              <div class="stat-text">
+                <div class="stat-value">0</div>
+                <div class="stat-label">Chưa làm</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center;">
+          <div class="progress-bar">
+            <div class="progress-fill" style="width: 100%;"></div>
+          </div>
+          <span class="progress-text">20/20 câu</span>
+        </div>
+      </div>
+
+      <!-- Quiz Content -->
+      <div class="quiz-content">
+        <!-- Question 1 - Correct -->
+        <div class="question-card correct">
+          <div class="topic-badge">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+            </svg>
+            Giới thiệu Machine Learning
+          </div>
+          <div class="question-header">
+            <div class="question-number">1</div>
+            <div class="question-text">Machine Learning là gì?</div>
+          </div>
+          <div class="options-list">
+            <div class="option-item">
+              <div class="option-letter">A</div>
+              <span class="option-text">Lập trình máy tính truyền thống</span>
+            </div>
+            <div class="option-item correct-answer">
+              <div class="option-letter">B</div>
+              <span class="option-text">Lĩnh vực nghiên cứu giúp máy tính học từ dữ liệu</span>
+              <div class="option-feedback feedback-correct">
+                <span class="feedback-icon">✓</span>
+                <span>Đúng</span>
+              </div>
+            </div>
+            <div class="option-item">
+              <div class="option-letter">C</div>
+              <span class="option-text">Viết code tự động hoàn chỉnh</span>
+            </div>
+            <div class="option-item">
+              <div class="option-letter">D</div>
+              <span class="option-text">Sử dụng database để lưu trữ thông tin</span>
+            </div>
+          </div>
+          <div class="explanation-box">
+            <div class="explanation-title">Giải thích</div>
+            Machine Learning (Học máy) là một nhánh của AI tập trung vào việc phát triển thuật toán cho phép máy tính học hỏi từ dữ liệu mà không cần được lập trình tường minh.
+          </div>
+        </div>
+
+        <!-- Question 2 - Wrong -->
+        <div class="question-card wrong">
+          <div class="topic-badge">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+            </svg>
+            Types of Learning
+          </div>
+          <div class="question-header">
+            <div class="question-number">2</div>
+            <div class="question-text">Loại nào KHÔNG phải là một dạng của Machine Learning?</div>
+          </div>
+          <div class="options-list">
+            <div class="option-item">
+              <div class="option-letter">A</div>
+              <span class="option-text">Supervised Learning</span>
+            </div>
+            <div class="option-item">
+              <div class="option-letter">B</div>
+              <span class="option-text">Unsupervised Learning</span>
+            </div>
+            <div class="option-item wrong-answer">
+              <div class="option-letter">C</div>
+              <span class="option-text">Manual Learning</span>
+              <div class="option-feedback feedback-wrong">
+                <span class="feedback-icon">✗</span>
+                <span>Sai</span>
+              </div>
+            </div>
+            <div class="option-item correct-answer">
+              <div class="option-letter">D</div>
+              <span class="option-text">Reinforcement Learning</span>
+              <div class="option-feedback feedback-correct">
+                <span class="feedback-icon">✓</span>
+                <span>Đáp án đúng</span>
+              </div>
+            </div>
+          </div>
+          <div class="explanation-box">
+            <div class="explanation-title">Giải thích</div>
+            "Manual Learning" không phải là một dạng của Machine Learning. Các dạng chính bao gồm: Supervised, Unsupervised, Semi-supervised, và Reinforcement Learning.
+          </div>
+        </div>
+
+        <!-- Question 3 - Pending -->
+        <div class="question-card pending">
+          <div class="topic-badge">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
+            </svg>
+            Data Preprocessing
+          </div>
+          <div class="question-header">
+            <div class="question-number">3</div>
+            <div class="question-text">Bước nào KHÔNG thuộc quá trình tiền xử lý dữ liệu?</div>
+          </div>
+          <div class="options-list">
+            <div class="option-item">
+              <div class="option-letter">A</div>
+              <span class="option-text">Xử lý giá trị thiếu (Missing values)</span>
+            </div>
+            <div class="option-item">
+              <div class="option-letter">B</div>
+              <span class="option-text">Chuẩn hóa dữ liệu (Normalization)</span>
+            </div>
+            <div class="option-item">
+              <div class="option-letter">C</div>
+              <span class="option-text">Mã hóa biến phân loại (Encoding)</span>
+            </div>
+            <div class="option-item">
+              <div class="option-letter">D</div>
+              <span class="option-text">Huấn luyện mô hình (Model Training)</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Footer -->
+      <div class="quiz-footer">
+        <div class="footer-info">
+          <span class="question-count">Tổng <strong>20</strong> câu hỏi</span>
+          <span style="color: var(--ta-green); font-weight: 600;">✨ Hoàn thành 100%</span>
+        </div>
+        <div class="footer-actions">
+          <button class="action-btn secondary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+              <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            Làm lại
+          </button>
+          <button class="action-btn primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+              <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            Xem chi tiết
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

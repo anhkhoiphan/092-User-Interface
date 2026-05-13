@@ -27,6 +27,15 @@ const RecapWorkflow = (props) => {
   const [refineQuery, setRefineQuery] = useState('');
   const [selectedChips, setSelectedChips] = useState([]);
 
+  // Use deadlines from aiPreview if available, otherwise fall back to empty array
+  const deadlines = (aiPreview?.deadlines && Array.isArray(aiPreview.deadlines) && aiPreview.deadlines.length > 0)
+    ? aiPreview.deadlines
+    : [];
+
+  const renderMarkdown = (content) => {
+    return { __html: marked.parse(content || '') };
+  };
+
   const refineOptions = [
     { id: 'shorter', label: '✨ Ngắn gọn', prompt: 'Làm ngắn gọn lại, súc tích hơn.' },
     { id: 'funny', label: '✨ Hài hước', prompt: 'Viết lại với giọng văn hài hước, năng lượng hơn.' },
@@ -59,43 +68,6 @@ const RecapWorkflow = (props) => {
       });
     }
   };
-
-  const renderMarkdown = (content) => {
-    return { __html: marked.parse(content || '') };
-  };
-
-  // Extract deadlines from summary content (look for homework/bài tập patterns)
-  const extractDeadlines = (content) => {
-    if (!content) return [];
-
-    // Tìm các dòng có từ khóa: bài tập, homework, deadline, nộp, due, assignment
-    const patterns = [
-      /[-•*]\s*.*?(?:bài tập|homework|assignment|deadline|hạn|nộp|due date|làm|chuẩn bị).*?(?:\n|$)/gi,
-      /[-•*]\s*(?:đóng|gửi|submit).*?(?:bài|file|nội dung).*?(?:\n|$)/gi,
-      /\d{1,2}[\/-]\d{1,2}(?:\/\d{2,4})?\s*[.:]\s*.+?[\n]/gi
-    ];
-
-    const deadlines = new Set();
-
-    for (const pattern of patterns) {
-      const matches = content.match(pattern);
-      if (matches) {
-        matches.forEach(match => {
-          const cleanMatch = match.trim()
-            .replace(/^[-•*]\s*/, '')
-            .replace(/\s+/g, ' ')
-            .slice(0, 150);
-          if (cleanMatch.length > 8 && cleanMatch.length < 151) {
-            deadlines.add(cleanMatch);
-          }
-        });
-      }
-    }
-
-    return Array.from(deadlines).slice(0, 5);
-  };
-
-  const deadlines = extractDeadlines(aiPreview?.content || '');
 
   return (
     <div className="animate-fade">
@@ -182,7 +154,7 @@ const RecapWorkflow = (props) => {
 
         {/* Right Panel - Content Area */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <div className="ta-card-premium" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 140px)', overflow: 'hidden' }}>
+          <div className="ta-card-premium" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 140px)', overflow: 'hidden', position: 'relative' }}>
 
             {/* Header */}
             <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border-primary)', background: 'var(--bg-surface-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
@@ -201,10 +173,14 @@ const RecapWorkflow = (props) => {
 
             {/* Processing Overlay */}
             {uploading && (
-              <div style={{ position: 'absolute', inset: 0, background: 'rgba(15, 23, 42, 0.9)', zIndex: 30, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
-                <Icons.FiCpu className="spin" size={56} color="var(--primary)" />
-                <h4 style={{ marginTop: '20px', fontWeight: 700, fontFamily: 'inherit', fontSize: '18px' }}>AI đang phân tích...</h4>
-                <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.85)', marginTop: '8px' }}>Đang đọc file và tạo tóm tắt bài giảng</p>
+              <div className="processing-overlay-card">
+                <div className="processing-card-content">
+                  <Icons.FiCpu className="spin" size={48} color="var(--primary)" />
+                  <div style={{ textAlign: 'center' }}>
+                    <h4 className="processing-card-title">AI đang phân tích...</h4>
+                    <p className="processing-card-text">Đang đọc file và tạo tóm tắt bài giảng</p>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -258,7 +234,17 @@ const RecapWorkflow = (props) => {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                           {deadlines.map((deadline, idx) => (
                             <div key={idx} style={{ padding: '12px', background: 'var(--bg-surface-tertiary)', borderRadius: '8px', borderLeft: '3px solid var(--ta-amber)', fontSize: '13px', lineHeight: '1.5' }}>
-                              {deadline}
+                              <div style={{ fontWeight: 600, marginBottom: '4px' }}>{deadline.title || deadline}</div>
+                              {deadline.due_date && (
+                                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                                  📅 {deadline.due_date}
+                                </div>
+                              )}
+                              {deadline.description && (
+                                <div style={{ fontSize: '12px', marginTop: '4px' }}>
+                                  {deadline.description}
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
