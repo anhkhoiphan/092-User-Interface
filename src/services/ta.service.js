@@ -18,6 +18,14 @@ const taService = {
   },
 
   /**
+   * Phân tích real-time signals từ chat messages
+   */
+  analyzeAtRiskSignals: async (spaceId, hours = 168) => {
+    const response = await api.post(`/ta/at-risk/analyze?spaceId=${spaceId}&hours=${hours}`);
+    return response.data;
+  },
+
+  /**
    * Giải quyết cảnh báo
    */
   resolveAlert: async (snapshotId, spaceId) => {
