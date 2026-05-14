@@ -61,6 +61,7 @@ function ChatArea({
   const typingTimeoutRef = useRef(null);
   const [roomTypingUser, setRoomTypingUser] = useState(null); // { name, timeoutId }
   const roomTypingTimeoutRef = useRef(null); // Track typing timeout to clear properly
+  const roomBotTypingClearRef = useRef(null);
   const isCreatingConversationRef = useRef(false);
   const pendingMessageQueueRef = useRef([]); // Queue messages while creating conversation
   const sendingTimeoutsRef = useRef({}); // { [tempId]: timeoutId } - auto-clear pending after 10s
@@ -259,17 +260,54 @@ function ChatArea({
   useEffect(() => {
     if (!isSpaceRoom || !room) return;
 
+    const clearRoomTyping = (delay = 0) => {
+      if (roomTypingTimeoutRef.current) {
+        clearTimeout(roomTypingTimeoutRef.current);
+        roomTypingTimeoutRef.current = null;
+      }
+      if (roomBotTypingClearRef.current) {
+        clearTimeout(roomBotTypingClearRef.current);
+        roomBotTypingClearRef.current = null;
+      }
+
+      if (delay > 0) {
+        roomBotTypingClearRef.current = setTimeout(() => {
+          setRoomTypingUser(null);
+          roomBotTypingClearRef.current = null;
+        }, delay);
+      } else {
+        setRoomTypingUser(null);
+      }
+    };
+
+    const isStudyBotPayload = (data) => {
+      const sender = data?.sender || data?.author || {};
+      const senderName = typeof sender === "object"
+        ? sender.display_name || sender.username || ""
+        : typeof sender === "string"
+          ? sender
+          : "";
+      const senderUsername = typeof sender === "object" ? sender.username || "" : "";
+      return data?.isBot || senderName === "StudyBot" || senderUsername === "studybot";
+    };
+
     const handleUserTyping = (data) => {
       if (data.roomId === room && data.userId !== currentUser?.id) {
-        setRoomTypingUser(data.senderName || "Someone");
+        if (data.isTyping === false) {
+          clearRoomTyping(data.isBot ? 120 : 0);
+          return;
+        }
+
+        setRoomTypingUser(data.isBot ? "StudyBot" : data.senderName || "Someone");
         // Clear previous timeout before setting new one
         if (roomTypingTimeoutRef.current) {
           clearTimeout(roomTypingTimeoutRef.current);
         }
         // Auto-clear after 3s
+        const typingName = data.isBot ? "StudyBot" : data.senderName || "Someone";
         roomTypingTimeoutRef.current = setTimeout(() => {
           setRoomTypingUser((current) =>
-            current === (data.senderName || "Someone") ? null : current
+            current === typingName ? null : current
           );
         }, 3000);
       }
@@ -277,19 +315,34 @@ function ChatArea({
 
     const handleUserStopTyping = (data) => {
       if (data.roomId === room) {
-        setRoomTypingUser(null);
+        clearRoomTyping();
       }
     };
 
+    const handleRoomMessage = (data) => {
+      const messageRoomId = data.room_id || data.roomId;
+      if (messageRoomId === room && isStudyBotPayload(data)) {
+        clearRoomTyping(50);
+      }
+    };
+
+    socketService.on("typing", handleUserTyping);
+    socketService.onNewMessage(handleRoomMessage);
     socketService.on("userTyping", handleUserTyping);
     socketService.on("userStopTyping", handleUserStopTyping);
 
     return () => {
+      socketService.off("typing", handleUserTyping);
+      socketService.off("newMessage", handleRoomMessage);
       socketService.off("userTyping", handleUserTyping);
       socketService.off("userStopTyping", handleUserStopTyping);
       if (roomTypingTimeoutRef.current) {
         clearTimeout(roomTypingTimeoutRef.current);
         roomTypingTimeoutRef.current = null;
+      }
+      if (roomBotTypingClearRef.current) {
+        clearTimeout(roomBotTypingClearRef.current);
+        roomBotTypingClearRef.current = null;
       }
     };
   }, [isSpaceRoom, room, currentUser?.id]);
