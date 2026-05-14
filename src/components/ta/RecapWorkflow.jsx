@@ -28,6 +28,7 @@ const RecapWorkflow = (props) => {
   const [isEditing, setIsEditing] = useState(false);
   const [refineQuery, setRefineQuery] = useState('');
   const [selectedChips, setSelectedChips] = useState([]);
+  const [quizQuestionCount, setQuizQuestionCount] = useState(10);
 
   // Use deadlines from aiPreview if available, otherwise fall back to empty array
   const deadlines = (aiPreview?.deadlines && Array.isArray(aiPreview.deadlines) && aiPreview.deadlines.length > 0)
@@ -197,9 +198,9 @@ const RecapWorkflow = (props) => {
             {/* Scrollable Content Area */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
 
-              {/* AI Preview Content - 3 Columns */}
+              {/* AI Preview Content - 2 Columns */}
               {aiPreview && !uploading && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', marginBottom: '24px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px', marginBottom: '24px' }}>
 
                   {/* Column 1: Tóm tắt bài giảng */}
                   <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg-surface)', borderRadius: '12px', border: '1px solid var(--border-primary)', overflow: 'hidden' }}>
@@ -207,7 +208,7 @@ const RecapWorkflow = (props) => {
                       <Icons.FiFileText size={16} color="var(--primary)" />
                       <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 700, fontFamily: 'inherit' }}>Tóm tắt bài giảng</h4>
                     </div>
-                    <div style={{ flex: 1, padding: '18px', overflowY: 'auto', minHeight: '300px', maxHeight: '500px' }}>
+                    <div style={{ flex: 1, padding: '18px', overflowY: 'auto', minHeight: '300px' }}>
                       {isEditing ? (
                         <textarea
                           className="ta-input"
@@ -231,19 +232,19 @@ const RecapWorkflow = (props) => {
                       <Icons.FiCalendar size={16} color="var(--ta-amber)" />
                       <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 700, fontFamily: 'inherit' }}>Deadlines</h4>
                     </div>
-                    <div style={{ flex: 1, padding: '18px', overflowY: 'auto', minHeight: '300px', maxHeight: '500px' }}>
+                    <div style={{ flex: 1, padding: '18px', overflowY: 'auto', minHeight: '300px' }}>
                       {deadlines && deadlines.length > 0 ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                           {deadlines.map((deadline, idx) => (
-                            <div key={idx} style={{ padding: '12px', background: 'var(--bg-surface-tertiary)', borderRadius: '8px', borderLeft: '3px solid var(--ta-amber)', fontSize: '13px', lineHeight: '1.5' }}>
-                              <div style={{ fontWeight: 600, marginBottom: '4px' }}>{deadline.title || deadline}</div>
+                            <div key={idx} style={{ padding: '12px', background: 'var(--bg-surface-tertiary)', borderRadius: '8px', borderLeft: '3px solid var(--ta-amber)', fontSize: '13px', lineHeight: '1.5', wordBreak: 'break-word' }}>
+                              <div style={{ fontWeight: 600, marginBottom: '4px', wordBreak: 'break-word' }}>{deadline.title || deadline}</div>
                               {deadline.due_date && (
                                 <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
                                   📅 {deadline.due_date}
                                 </div>
                               )}
                               {deadline.description && (
-                                <div style={{ fontSize: '12px', marginTop: '4px' }}>
+                                <div style={{ fontSize: '12px', marginTop: '4px', wordBreak: 'break-word' }}>
                                   {deadline.description}
                                 </div>
                               )}
@@ -254,29 +255,6 @@ const RecapWorkflow = (props) => {
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '200px', color: 'var(--text-muted)', gap: '8px' }}>
                           <Icons.FiCalendar size={32} opacity={0.3} />
                           <span style={{ fontSize: '13px' }}>Không có deadline nào</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Column 3: Tài liệu đính kèm */}
-                  <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg-surface)', borderRadius: '12px', border: '1px solid var(--border-primary)', overflow: 'hidden' }}>
-                    <div style={{ padding: '14px 18px', background: 'var(--bg-surface-tertiary)', borderBottom: '1px solid var(--border-primary)', display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                      <Icons.FiPaperclip size={16} color="var(--ta-blue)" />
-                      <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 700, fontFamily: 'inherit' }}>Tài liệu</h4>
-                    </div>
-                    <div style={{ flex: 1, padding: '18px', overflowY: 'auto', minHeight: '300px', maxHeight: '500px' }}>
-                      {uploadedFile ? (
-                        <div style={{ padding: '14px', background: 'var(--bg-surface-tertiary)', borderRadius: '8px', borderLeft: '3px solid var(--primary)' }}>
-                          <div style={{ fontSize: '14px', fontWeight: 600, fontFamily: 'inherit', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Icons.FiFileText size={16} /> {uploadedFile.filename}
-                          </div>
-                          <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'inherit' }}>Đã tải lên và phân tích</div>
-                        </div>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '200px', color: 'var(--text-muted)', gap: '8px' }}>
-                          <Icons.FiPaperclip size={32} opacity={0.3} />
-                          <span style={{ fontSize: '13px' }}>Không có tài liệu</span>
                         </div>
                       )}
                     </div>
@@ -325,18 +303,35 @@ const RecapWorkflow = (props) => {
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', flexWrap: 'wrap' }}>
                   <button className="ta-btn" style={{ padding: '8px 16px', fontFamily: 'inherit' }} onClick={() => { if (typeof setAiPreview === 'function') setAiPreview(null); }}>Hủy</button>
                   {typeof onGenerateQuiz === 'function' && (
-                    <button
-                      className="ta-btn"
-                      style={{ padding: '8px 16px', fontFamily: 'inherit' }}
-                      onClick={() => onGenerateQuiz(aiPreview)}
-                      disabled={generatingQuiz}
-                    >
-                      {generatingQuiz ? <Icons.FiRefreshCw className="spin" /> : <Icons.FiHelpCircle />}
-                      {generatingQuiz ? 'Đang tạo quiz...' : 'Tạo quiz từ recap'}
-                    </button>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <label style={{ fontSize: '12px', fontWeight: 500, fontFamily: 'inherit' }}>Số câu:</label>
+                        <select
+                          className="ta-input"
+                          value={quizQuestionCount}
+                          onChange={(e) => setQuizQuestionCount(Number(e.target.value))}
+                          disabled={generatingQuiz}
+                          style={{ padding: '6px 10px', minWidth: '65px', fontSize: '13px', fontFamily: 'inherit', opacity: generatingQuiz ? 0.5 : 1 }}
+                        >
+                          <option value={5}>5</option>
+                          <option value={10}>10</option>
+                          <option value={15}>15</option>
+                          <option value={20}>20</option>
+                        </select>
+                      </div>
+                      <button
+                        className="ta-btn"
+                        style={{ padding: '6px 14px', fontSize: '13px', fontFamily: 'inherit' }}
+                        onClick={() => onGenerateQuiz(aiPreview, quizQuestionCount)}
+                        disabled={generatingQuiz}
+                      >
+                        {generatingQuiz ? <Icons.FiRefreshCw className="spin" size={14} /> : <Icons.FiHelpCircle size={14} />}
+                        <span style={{ marginLeft: '4px' }}>{generatingQuiz ? 'Đang tạo...' : 'Tạo quiz'}</span>
+                      </button>
+                    </div>
                   )}
                   <button className="vibrant-btn"
                     style={{ padding: '8px 20px', fontFamily: 'inherit' }}
@@ -347,7 +342,7 @@ const RecapWorkflow = (props) => {
                       }
                     }}
                   >
-                    <Icons.FiSend /> {scheduleDate ? 'Đặt lịch' : 'Gửi ngay'}
+                    <Icons.FiSend size={14} /> <span style={{ marginLeft: '4px' }}>{scheduleDate ? 'Đặt lịch' : 'Gửi ngay'}</span>
                   </button>
                 </div>
               </div>

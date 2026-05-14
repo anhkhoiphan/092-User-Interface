@@ -93,6 +93,7 @@ const TADashboard = () => {
   const [generatingQuiz, setGeneratingQuiz] = useState(false);
   const [studentQuizOpen, setStudentQuizOpen] = useState(false);
   const [studentQuizId, setStudentQuizId] = useState(null);
+  const [sendingQuizId, setSendingQuizId] = useState(null);
 
   // --- HYBRID AI CONFIG ---
   const DEFAULT_CONFIG = {
@@ -337,7 +338,7 @@ TUYỆT ĐỐI KHÔNG thêm bất kỳ nội dung nào khác ngoài JSON (không
         const otherSpaces = selectedSpaces.filter(id => id !== spaceId);
         await Promise.all(otherSpaces.map(async (sid) => {
           const newDraftRes = await taService.createSummaryDraft({ spaceId: sid, content: activeContent, draft_type: activeType, metadata: { deadlines: activeDeadlines } });
-          if (newDraftRes?.success) await taService.approveSummary(newDraftRes.data.id, sid);
+          if (newDraftRes?.success && newDraftRes?.data) await taService.approveSummary(newDraftRes.data.id, sid);
         }));
       }
       addToast('Đã đăng bài!'); fetchData(); setAiPreview(null); setCurrentStep(1);
@@ -362,7 +363,7 @@ TUYỆT ĐỐI KHÔNG thêm bất kỳ nội dung nào khác ngoài JSON (không
         const otherSpaces = selectedSpaces.filter(id => id !== spaceId);
         await Promise.all(otherSpaces.map(async (sid) => {
           const newDraftRes = await taService.createSummaryDraft({ spaceId: sid, content: activeContent, draft_type: activeType, metadata: { deadlines: activeDeadlines } });
-          if (newDraftRes?.success) await taService.scheduleSummary(newDraftRes.data.id, sid, isoDate);
+          if (newDraftRes?.success && newDraftRes?.data) await taService.scheduleSummary(newDraftRes.data.id, sid, isoDate);
         }));
       }
       
@@ -490,7 +491,8 @@ ${compileRules(g.rules)}
   };
 
   // Quiz handlers
-  const handleGenerateQuiz = async (recapDraft = aiPreview) => {
+  const handleGenerateQuiz = async (recapDraft = aiPreview, questionCount = 10) => {
+    console.log('[Quiz] Starting generation:', { recapId: recapDraft?.id, questionCount });
     if (!selectedSpaces.length) {
       addToast('Vui lòng chọn lớp trước khi tạo quiz', 'error');
       return;
@@ -501,21 +503,30 @@ ${compileRules(g.rules)}
     }
     setGeneratingQuiz(true);
     try {
+      console.log('[Quiz] Calling API with:', { space_id: selectedSpaces[0], recap_id: recapDraft.id, k_question: questionCount });
       const res = await taService.generateQuiz({
         space_id: selectedSpaces[0],
-        recap_id: recapDraft.id
+        recap_id: recapDraft.id,
+        k_question: questionCount
       });
-      if (res.success) {
-        addToast('Đã tạo quiz từ bản recap!');
+      console.log('[Quiz] API response:', res);
+      if (res.success && res.data) {
+        const actualCount = res.data.total_questions || questionCount;
+        addToast(`Đã tạo quiz ${actualCount} câu từ bản recap!`);
         setCurrentQuizId(res.data.id);
         setQuizMode('edit');
         fetchData();
       } else {
-        addToast(res.error || 'Lỗi tạo quiz', 'error');
+        console.error('[Quiz] Invalid response or failed:', res);
+        addToast(res.error || 'Lỗi tạo quiz: không nhận được dữ liệu hợp lệ', 'error');
       }
     } catch (error) {
-      console.error('handleGenerateQuiz error:', error);
-      addToast('Lỗi tạo quiz', 'error');
+      console.error('[Quiz] handleGenerateQuiz error:', {
+        message: error?.message || String(error),
+        response: error?.response?.data,
+        status: error?.response?.status
+      });
+      addToast(`Lỗi: ${error?.message || 'Không thể tạo quiz'}`, 'error');
     } finally {
       setGeneratingQuiz(false);
     }
@@ -536,6 +547,35 @@ ${compileRules(g.rules)}
     setQuizMode('results');
   };
 
+  const handleSendQuizFromList = async (quizId) => {
+    if (!selectedSpaces.length) {
+      addToast('Vui lòng chọn lớp học để gửi quiz', 'error');
+      return;
+    }
+
+    if (!confirm('Bạn có chắc muốn gửi quiz này đến lớp học?')) {
+      return;
+    }
+
+    setSendingQuizId(quizId);
+    try {
+      const res = await taService.sendQuiz(quizId, { space_id: selectedSpaces[0] });
+      if (res?.success) {
+        const roomName = res?.data?.room_name || 'room';
+        const spaceName = res?.data?.space_name || 'lớp học';
+        addToast(`Đã gửi quiz vào room "${roomName}" (${spaceName})!`);
+        fetchData();
+      } else {
+        addToast(res?.error || 'Không thể gửi quiz', 'error');
+      }
+    } catch (error) {
+      console.error('[Quiz] Send error:', error);
+      addToast(error?.response?.data?.message || 'Lỗi khi gửi quiz', 'error');
+    } finally {
+      setSendingQuizId(null);
+    }
+  };
+
   const handleQuizSave = () => {
     addToast('Đã lưu quiz!');
     setQuizMode(null);
@@ -543,7 +583,9 @@ ${compileRules(g.rules)}
   };
 
   const handleQuizSend = (data) => {
-    addToast(data?.room_name ? `Đã gửi quiz vào room ${data.room_name}!` : 'Đã gửi quiz vào chat!');
+    const roomName = data?.room_name || 'room';
+    const spaceName = data?.space_name || 'lớp học';
+    addToast(`Đã gửi quiz vào room "${roomName}" (${spaceName})!`);
     setQuizMode('results');
     fetchData();
   };
@@ -566,6 +608,17 @@ ${compileRules(g.rules)}
   const handleQuizComplete = () => {
     addToast('Đã hoàn thành quiz!');
     setQuizMode(null);
+  };
+
+  const handleDeleteQuizFromList = async (quizId) => {
+    if (!confirm('Bạn có chắc muốn xóa quiz này? Hành động này không thể hoàn tác.')) return;
+    try {
+      await taService.updateQuiz(quizId, { status: 'archived' });
+      addToast('Đã xóa quiz!');
+      fetchData();
+    } catch (error) {
+      addToast('Không thể xóa quiz', 'error');
+    }
   };
 
   const visibleQuizList = selectedSpaces.length > 0
@@ -725,14 +778,41 @@ ${compileRules(g.rules)}
                   setUploading(true);
                   try {
                     const res = await taService.uploadSlide(selectedSpaces[0], file);
-                    if (res.success) setUploadedFile({ ...res.data, rawFile: file });
+                    if (res.success) {
+                      setUploadedFile({ ...res.data, rawFile: file });
+                      // Index PDF vào Qdrant (background, không blocking)
+                      (async () => {
+                        try {
+                          const indexRes = await taService.indexPdf(selectedSpaces[0], `room-${selectedSpaces[0]}`, file);
+                          if (indexRes.success) {
+                            console.log('[Slide] Indexed', indexRes.chunksIndexed, 'chunks');
+                          } else {
+                            console.warn('[Slide] Index failed:', indexRes.error);
+                          }
+                        } catch (err) {
+                          console.error('[Slide] Index failed:', err);
+                          // Thông báo người dùng: file đã upload nhưng index thất bại
+                          addToast('Slide đã tải lên nhưng không index được vào tìm kiếm', 'error');
+                        }
+                      })();
+                    }
                   } catch (error) {
                     console.error('handleFileUpload error:', error);
                     addToast('Lỗi tải file lên', 'error');
                   } finally { setUploading(false); }
                 }} 
                 startAiAnalysis={async () => {
-                  if (selectedSpaces.length === 0) return;
+                  if (selectedSpaces.length === 0) {
+                    console.warn('[Recap] No space selected');
+                    return;
+                  }
+
+                  console.log('[Recap] Starting analysis:', {
+                    selectedSpaces,
+                    hasFile: !!uploadedFile,
+                    fileName: uploadedFile?.filename,
+                    isHitlEnabled: aiConfig.isHitlEnabled
+                  });
 
                   if (!aiConfig.isHitlEnabled) {
                     addToast('Đã giao AI xử lý nền. Bạn có thể làm việc khác!');
@@ -741,14 +821,23 @@ ${compileRules(g.rules)}
                     (async () => {
                       try {
                         const prompt = buildRecapPrompt();
+                        console.log('[Recap] Prompt built:', prompt.substring(0, 200) + '...');
+
                         let resAgent;
-                        if (uploadedFile && uploadedFile.rawFile) resAgent = await taService.callAgentWithFile(selectedSpaces[0], prompt, user?.id || 'TA', uploadedFile.rawFile);
-                        else resAgent = await taService.callAgentChat(selectedSpaces[0], prompt, user?.id || 'TA');
+                        if (uploadedFile && uploadedFile.rawFile) {
+                          console.log('[Recap] Calling agent WITH file:', uploadedFile.rawFile.name, uploadedFile.rawFile.size, 'bytes');
+                          resAgent = await taService.callAgentWithFile(selectedSpaces[0], prompt, user?.id || 'TA', uploadedFile.rawFile);
+                        } else {
+                          console.log('[Recap] Calling agent WITHOUT file');
+                          resAgent = await taService.callAgentChat(selectedSpaces[0], prompt, user?.id || 'TA');
+                        }
+
+                        console.log('[Recap] Agent response:', resAgent);
 
                         const aiContent = resAgent?.answer || resAgent?.content || resAgent?.response;
                         if (resAgent?.success && aiContent) {
-                          // Parse structured JSON response
                           const parsed = parseAiRecapResponse(aiContent);
+                          console.log('[Recap] Parsed recap:', { summaryLength: parsed.summary?.length, deadlinesCount: parsed.deadlines?.length });
 
                           const res = await taService.createSummaryDraft({
                             spaceId: selectedSpaces[0],
@@ -756,12 +845,19 @@ ${compileRules(g.rules)}
                             draft_type: 'lesson_recap',
                             metadata: { deadlines: parsed.deadlines }
                           });
-                          if (res?.success) {
+                          console.log('[Recap] Draft created:', res);
+                          if (res?.success && res?.data) {
                             if (scheduleDate) handleScheduleSummary(res.data.id, res.data.space_id, scheduleDate, res.data);
                             else handleApproveSummary(res.data.id, res.data.space_id, res.data);
+                          } else {
+                            console.error('[Recap] Draft creation failed or no data:', res);
                           }
+                        } else {
+                          console.error('[Recap] Agent failed or no content:', resAgent);
                         }
-                      } catch(e) {}
+                      } catch(e) {
+                        console.error('[Recap] Background task error:', e);
+                      }
                     })();
                     return;
                   }
@@ -769,14 +865,23 @@ ${compileRules(g.rules)}
                   setCurrentStep(2); setIsAnalyzing(true);
                   try {
                     const prompt = buildRecapPrompt();
+                    console.log('[Recap] Prompt built:', prompt.substring(0, 200) + '...');
+
                     let resAgent;
-                    if (uploadedFile && uploadedFile.rawFile) resAgent = await taService.callAgentWithFile(selectedSpaces[0], prompt, user?.id || 'TA', uploadedFile.rawFile);
-                    else resAgent = await taService.callAgentChat(selectedSpaces[0], prompt, user?.id || 'TA');
+                    if (uploadedFile && uploadedFile.rawFile) {
+                      console.log('[Recap] Calling agent WITH file:', uploadedFile.rawFile.name, uploadedFile.rawFile.size, 'bytes');
+                      resAgent = await taService.callAgentWithFile(selectedSpaces[0], prompt, user?.id || 'TA', uploadedFile.rawFile);
+                    } else {
+                      console.log('[Recap] Calling agent WITHOUT file');
+                      resAgent = await taService.callAgentChat(selectedSpaces[0], prompt, user?.id || 'TA');
+                    }
+
+                    console.log('[Recap] Agent response:', resAgent);
 
                     const aiContent = resAgent?.answer || resAgent?.content || resAgent?.response;
                     if (resAgent?.success && aiContent) {
-                      // Parse structured JSON response
                       const parsed = parseAiRecapResponse(aiContent);
+                      console.log('[Recap] Parsed recap:', { summaryLength: parsed.summary?.length, deadlinesCount: parsed.deadlines?.length });
 
                       const res = await taService.createSummaryDraft({
                         spaceId: selectedSpaces[0],
@@ -784,12 +889,26 @@ ${compileRules(g.rules)}
                         draft_type: 'lesson_recap',
                         metadata: { deadlines: parsed.deadlines }
                       });
-                      if (res?.success) {
+                      console.log('[Recap] Draft created:', res);
+                      if (res?.success && res?.data) {
                         setAiPreview({ ...res.data, deadlines: parsed.deadlines });
                         setCurrentStep(3);
+                      } else {
+                        console.error('[Recap] Draft creation failed or no data:', res);
+                        addToast(res?.error || 'Lỗi tạo bản thảo', 'error');
                       }
-                    } else { addToast('AI không phản hồi', 'error'); }
-                  } catch (error) { addToast('Lỗi khi phân tích AI', 'error'); setCurrentStep(1); } finally { setIsAnalyzing(false); }
+                    } else {
+                      console.error('[Recap] Agent failed or no content:', resAgent);
+                      const errorMsg = resAgent?.error || 'AI không trả về nội dung hợp lệ';
+                      addToast(errorMsg, 'error');
+                    }
+                  } catch (error) {
+                    console.error('[Recap] Analysis error:', error);
+                    addToast(error.message || 'Lỗi khi phân tích AI', 'error');
+                    setCurrentStep(1);
+                  } finally {
+                    setIsAnalyzing(false);
+                  }
                 }}
                 aiPreview={aiPreview} scheduleDate={scheduleDate} setScheduleDate={setScheduleDate} handleApproveSummary={handleApproveSummary} setCurrentStep={setCurrentStep}
                 setAiPreview={setAiPreview} handleScheduleSummary={handleScheduleSummary} selectedSpaces={selectedSpaces || []} setSelectedSpaces={setSelectedSpaces}
@@ -828,7 +947,7 @@ ${compileRules(g.rules)}
                 <div className="ta-card-premium" style={{ marginTop: '24px' }}>
                   <div className="card-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
                     <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <FiBarChart2 /> Bang diem quiz
+                      <FiBarChart2 /> Bảng điểm quiz
                     </h3>
                     <span className="ta-badge">{visibleQuizList.length} quiz</span>
                   </div>
@@ -842,30 +961,49 @@ ${compileRules(g.rules)}
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
                                 <strong style={{ fontSize: '14px', color: 'var(--text-primary)' }}>{quiz.title || 'Quiz'}</strong>
                                 <span className={`ta-badge ${isPublished ? 'badge-green' : 'badge-amber'}`}>
-                                  {isPublished ? 'Da gui' : 'Ban nhap'}
+                                  {isPublished ? 'Đã gửi' : 'Bản nháp'}
                                 </span>
                               </div>
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                                <span><FiLayers size={12} /> {quiz.space_name || 'Lop hoc'}</span>
-                                <span><FiFileText size={12} /> {quiz.total_questions || 0} cau hoi</span>
-                                <span><FiUser size={12} /> {quiz.total_attempts || 0} bai nop</span>
-                                <span><FiCheckCircle size={12} /> TB {quiz.average_score || 0} diem</span>
+                                <span><FiLayers size={12} /> {quiz.space_name || 'Lớp học'}</span>
+                                <span><FiFileText size={12} /> {quiz.total_questions || 0} câu hỏi</span>
+                                <span><FiUser size={12} /> {quiz.total_attempts || 0} bài nộp</span>
+                                <span><FiCheckCircle size={12} /> TB {quiz.average_score || 0} điểm</span>
                               </div>
                             </div>
                             <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                              {!isPublished && (
-                                <button className="ta-btn" onClick={() => handleEditQuiz(quiz.id)} title="Sua quiz">
-                                  <FiEdit3 />
+                              {!isPublished ? (
+                                <>
+                                  <button
+                                    className="vibrant-btn"
+                                    style={{ padding: '8px 12px', fontSize: '12px', minWidth: '80px' }}
+                                    onClick={() => handleSendQuizFromList(quiz.id)}
+                                    disabled={sendingQuizId === quiz.id}
+                                  >
+                                    {sendingQuizId === quiz.id ? (
+                                      <FiRefreshCw className="spin" />
+                                    ) : (
+                                      <>
+                                        <FiSend /> Gửi ngay
+                                      </>
+                                    )}
+                                  </button>
+                                  <button className="ta-btn" onClick={() => handleEditQuiz(quiz.id)} title="Sửa quiz">
+                                    <FiEdit3 />
+                                  </button>
+                                  <button className="ta-btn" onClick={() => handleDeleteQuizFromList(quiz.id)} title="Xóa quiz" style={{ color: 'var(--ta-red)' }}>
+                                    <FiTrash2 />
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  className="vibrant-btn"
+                                  style={{ padding: '8px 12px', fontSize: '12px' }}
+                                  onClick={() => handleViewResults(quiz.id)}
+                                >
+                                  <FiBarChart2 /> Xem kết quả
                                 </button>
                               )}
-                              <button
-                                className="vibrant-btn"
-                                style={{ padding: '8px 12px', fontSize: '12px' }}
-                                onClick={() => isPublished ? handleViewResults(quiz.id) : handleEditQuiz(quiz.id)}
-                              >
-                                {isPublished ? <FiBarChart2 /> : <FiEdit3 />}
-                                {isPublished ? 'Xem ket qua' : 'Sua quiz'}
-                              </button>
                             </div>
                           </div>
                         );
@@ -873,7 +1011,7 @@ ${compileRules(g.rules)}
                     ) : (
                       <div className="empty-state">
                         <FiBarChart2 size={42} style={{ opacity: 0.2, marginBottom: '12px' }} />
-                        <p>Chua co quiz nao. Tao recap xong roi bam tao quiz tu recap.</p>
+                        <p>Chưa có quiz nào. Tạo recap xong rồi bấm tạo quiz từ recap.</p>
                       </div>
                     )}
                   </div>

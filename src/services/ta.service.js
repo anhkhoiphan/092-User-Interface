@@ -94,22 +94,62 @@ const taService = {
    * AI: Gọi Agent Chat (Tóm tắt hội thoại thực tế)
    */
   callAgentChat: async (spaceId, query, senderId) => {
-    const response = await api.post('/ta/agent/chat', { spaceId, query, senderId });
-    return response.data;
+    console.log('[TA Service] callAgentChat:', {
+      spaceId,
+      senderId,
+      queryLength: query?.length
+    });
+
+    try {
+      const response = await api.post('/ta/agent/chat', { spaceId, query, senderId });
+      console.log('[TA Service] callAgentChat success:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('[TA Service] callAgentChat error:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+      throw error;
+    }
   },
 
   /**
    * AI: Gọi Agent với File (PDF/Ảnh)
    */
   callAgentWithFile: async (spaceId, query, senderId, file) => {
+    console.log('[TA Service] callAgentWithFile:', {
+      spaceId,
+      senderId,
+      fileName: file?.name,
+      fileSize: file?.size,
+      fileType: file?.type
+    });
+
     const formData = new FormData();
     formData.append('file', file);
-    const response = await api.post(`/ta/agent/chat-with-file?spaceId=${spaceId}&query=${encodeURIComponent(query)}&senderId=${encodeURIComponent(senderId)}`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-    return response.data;
+    formData.append('query', query);
+    formData.append('senderId', senderId);
+
+    console.log('[TA Service] FormData prepared, entries:', Array.from(formData.keys()));
+
+    try {
+      const response = await api.post(`/ta/agent/chat-with-file?spaceId=${spaceId}&query=${encodeURIComponent(query)}&senderId=${encodeURIComponent(senderId)}`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 60000
+      });
+      console.log('[TA Service] callAgentWithFile success:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('[TA Service] callAgentWithFile error:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+      throw error;
+    }
   },
 
   /**
@@ -134,6 +174,23 @@ const taService = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+    });
+    return response.data;
+  },
+
+  /**
+   * Index PDF vào Qdrant
+   */
+  indexPdf: async (spaceId, conversationId, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('spaceId', spaceId);
+    formData.append('conversationId', conversationId);
+    const response = await api.post('/ta/agent/index-pdf', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      timeout: 180000
     });
     return response.data;
   },
