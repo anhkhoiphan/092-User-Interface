@@ -750,14 +750,13 @@ ${compileRules(g.rules)}
                 <div className="ta-card-body" style={{ padding: '8px 0' }}>
                   {filteredAtRiskList.length > 0 ? (
                     filteredAtRiskList.map(student => (
-                      <RiskCard 
+                      <RiskCard
                         key={student.id} student={student} spaceName={taSpaces.find(s => s.id === student.space_id)?.name || spaces.find(s => s.id === student.space_id)?.name}
                         onResolve={handleResolveAlert} onGetContext={handleOpenCompose}
                         formatOfflineTime={(s) => {
                           const hours = Math.floor(s.hours_since_active || 0);
                           return hours === 0 ? 'Vừa mới' : (hours < 24 ? `${hours} giờ` : `${Math.floor(hours/24)} ngày`);
-                        }} 
-                        getRiskColor={(score, level) => level === 'critical' ? 'var(--ta-red)' : 'var(--ta-amber)'}
+                        }}
                       />
                     ))
                   ) : (
