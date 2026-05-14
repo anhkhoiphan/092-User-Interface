@@ -16,6 +16,9 @@ import RecapWorkflow from '../components/ta/RecapWorkflow';
 import AnnouncementWorkflow from '../components/ta/AnnouncementWorkflow';
 import AiComposeModal from '../components/ta/AiComposeModal';
 import ScheduledQueueList from '../components/ta/ScheduledQueueList';
+import QuizWorkflow from '../components/ta/QuizWorkflow';
+import QuizPlayer from '../components/ta/QuizPlayer';
+import QuizResults from '../components/ta/QuizResults';
 
 import './TADashboard.css';
 
@@ -82,6 +85,14 @@ const TADashboard = () => {
 
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [currentContext, setCurrentContext] = useState(null);
+
+  // Quiz state
+  const [quizMode, setQuizMode] = useState(null); // null, 'edit', 'play', 'results'
+  const [currentQuizId, setCurrentQuizId] = useState(null);
+  const [quizList, setQuizList] = useState([]);
+  const [generatingQuiz, setGeneratingQuiz] = useState(false);
+  const [studentQuizOpen, setStudentQuizOpen] = useState(false);
+  const [studentQuizId, setStudentQuizId] = useState(null);
 
   // --- HYBRID AI CONFIG ---
   const DEFAULT_CONFIG = {
@@ -250,24 +261,30 @@ TUYỆT ĐỐI KHÔNG thêm bất kỳ nội dung nào khác ngoài JSON (không
       const allAtRisk = [];
       const allQueue = [];
       const allLogs = [];
+      const allQuizzes = [];
       const targetSpaces = taSpaces.length > 0 ? taSpaces : spaces;
 
       await Promise.all(targetSpaces.map(async (space) => {
         if (!space.id) return;
         try { 
-          const [atRiskRes, queueRes, logsRes] = await Promise.allSettled([
+          const [atRiskRes, queueRes, logsRes, quizzesRes] = await Promise.allSettled([
             taService.getAtRiskList(space.id),
             taService.getSummaryQueue(space.id),
-            taService.getActionLogs(space.id)
+            taService.getActionLogs(space.id),
+            taService.listQuizzes(space.id)
           ]);
           if (atRiskRes.status === 'fulfilled' && atRiskRes.value.success) allAtRisk.push(...(atRiskRes.value.data || []).map(s => ({ ...s, space_id: space.id })));
           if (queueRes.status === 'fulfilled' && queueRes.value.success) allQueue.push(...(queueRes.value.data || []).map(q => ({ ...q, space_id: space.id })));
           if (logsRes.status === 'fulfilled' && logsRes.value.success) allLogs.push(...(logsRes.value.data || []));
+          if (quizzesRes.status === 'fulfilled' && quizzesRes.value.success) {
+            allQuizzes.push(...(quizzesRes.value.data || []).map(q => ({ ...q, space_id: space.id, space_name: space.name })));
+          }
         } catch (e) {}
       }));
       setAtRiskList(allAtRisk);
       setSummaryQueue(allQueue);
       setActionLogs(allLogs);
+      setQuizList(allQuizzes);
     } catch (error) {}
   };
 
@@ -472,6 +489,89 @@ ${compileRules(g.rules)}
     } finally { setLoading(false); }
   };
 
+  // Quiz handlers
+  const handleGenerateQuiz = async (recapDraft = aiPreview) => {
+    if (!selectedSpaces.length) {
+      addToast('Vui lòng chọn lớp trước khi tạo quiz', 'error');
+      return;
+    }
+    if (!recapDraft?.id) {
+      addToast('Hãy tạo bản recap trước khi tạo quiz', 'error');
+      return;
+    }
+    setGeneratingQuiz(true);
+    try {
+      const res = await taService.generateQuiz({
+        space_id: selectedSpaces[0],
+        recap_id: recapDraft.id
+      });
+      if (res.success) {
+        addToast('Đã tạo quiz từ bản recap!');
+        setCurrentQuizId(res.data.id);
+        setQuizMode('edit');
+        fetchData();
+      } else {
+        addToast(res.error || 'Lỗi tạo quiz', 'error');
+      }
+    } catch (error) {
+      console.error('handleGenerateQuiz error:', error);
+      addToast('Lỗi tạo quiz', 'error');
+    } finally {
+      setGeneratingQuiz(false);
+    }
+  };
+
+  const handleEditQuiz = (quizId) => {
+    setCurrentQuizId(quizId);
+    setQuizMode('edit');
+  };
+
+  const handlePlayQuiz = (quizId) => {
+    setCurrentQuizId(quizId);
+    setQuizMode('play');
+  };
+
+  const handleViewResults = (quizId) => {
+    setCurrentQuizId(quizId);
+    setQuizMode('results');
+  };
+
+  const handleQuizSave = () => {
+    addToast('Đã lưu quiz!');
+    setQuizMode(null);
+    fetchData();
+  };
+
+  const handleQuizSend = (data) => {
+    addToast(data?.room_name ? `Đã gửi quiz vào room ${data.room_name}!` : 'Đã gửi quiz vào chat!');
+    setQuizMode('results');
+    fetchData();
+  };
+
+  const handleStudentPlayQuiz = (quizId) => {
+    setStudentQuizId(quizId);
+    setStudentQuizOpen(true);
+  };
+
+  const handleStudentQuizClose = () => {
+    setStudentQuizOpen(false);
+    setStudentQuizId(null);
+  };
+
+  const handleQuizCompleteFromModal = () => {
+    handleStudentQuizClose();
+    addToast('Đã hoàn thành quiz!');
+  };
+
+  const handleQuizComplete = () => {
+    addToast('Đã hoàn thành quiz!');
+    setQuizMode(null);
+  };
+
+  const visibleQuizList = selectedSpaces.length > 0
+    ? quizList.filter(quiz => selectedSpaces.includes(quiz.space_id))
+    : quizList;
+
   const RuleCheckbox = ({ label, checked, onChange }) => (
     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', padding: '6px 12px', background: 'var(--bg-surface-tertiary)', borderRadius: '8px', border: checked ? '1px solid var(--primary)' : '1px solid var(--border-primary)', transition: '0.2s' }}>
       <input type="checkbox" checked={checked} onChange={onChange} style={{ width: '14px', height: '14px' }} />
@@ -497,6 +597,7 @@ ${compileRules(g.rules)}
       </div>
 
       <AiComposeModal isOpen={isComposeOpen} onClose={() => setIsComposeOpen(false)} context={currentContext} onSend={handleAiSend} isSending={loading} />
+      <QuizPlayer displayMode="modal" isOpen={studentQuizOpen} quizId={studentQuizId} onClose={handleStudentQuizClose} onComplete={handleQuizCompleteFromModal} />
 
       <aside className="ta-internal-sidebar">
         <div className="sb-head">
@@ -554,8 +655,8 @@ ${compileRules(g.rules)}
               <div className="monitoring-overview">
                 <div className="chart-card">
                   <h4>TỔNG QUAN XỬ LÝ</h4>
-                  <div style={{ width: '100%', height: 220 }}>
-                    <ResponsiveContainer>
+                  <div style={{ width: '100%', minWidth: 0, height: 220, minHeight: 220 }}>
+                    <ResponsiveContainer width="100%" height={220} minWidth={0}>
                       <BarChart data={finalChartData} layout="vertical" margin={{ left: 20, right: 30 }}>
                         <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border-primary)" />
                         <XAxis type="number" hide />
@@ -693,7 +794,92 @@ ${compileRules(g.rules)}
                 aiPreview={aiPreview} scheduleDate={scheduleDate} setScheduleDate={setScheduleDate} handleApproveSummary={handleApproveSummary} setCurrentStep={setCurrentStep}
                 setAiPreview={setAiPreview} handleScheduleSummary={handleScheduleSummary} selectedSpaces={selectedSpaces || []} setSelectedSpaces={setSelectedSpaces}
                 taSpaces={taSpaces || []} handleRefineAi={handleRefineAi}
+                onGenerateQuiz={handleGenerateQuiz}
+                generatingQuiz={generatingQuiz}
               />
+
+              {/* Quiz Section */}
+              {quizMode === 'edit' && currentQuizId && (
+                <QuizWorkflow
+                  quizId={currentQuizId}
+                  spaceId={selectedSpaces[0]}
+                  onBack={() => { setQuizMode(null); setCurrentQuizId(null); }}
+                  onSave={handleQuizSave}
+                  onSend={handleQuizSend}
+                  onViewResults={handleViewResults}
+                />
+              )}
+
+              {quizMode === 'play' && currentQuizId && (
+                <QuizPlayer
+                  quizId={currentQuizId}
+                  onComplete={handleQuizComplete}
+                />
+              )}
+
+              {quizMode === 'results' && currentQuizId && (
+                <QuizResults
+                  quizId={currentQuizId}
+                  onBack={() => { setQuizMode(null); setCurrentQuizId(null); }}
+                />
+              )}
+
+              {quizMode === null && (
+                <div className="ta-card-premium" style={{ marginTop: '24px' }}>
+                  <div className="card-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
+                    <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <FiBarChart2 /> Bang diem quiz
+                    </h3>
+                    <span className="ta-badge">{visibleQuizList.length} quiz</span>
+                  </div>
+                  <div className="ta-card-body" style={{ padding: '12px 0' }}>
+                    {visibleQuizList.length > 0 ? (
+                      visibleQuizList.map((quiz) => {
+                        const isPublished = quiz.status === 'published';
+                        return (
+                          <div key={quiz.id} className="ta-list-row" style={{ alignItems: 'center', gap: '16px' }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                                <strong style={{ fontSize: '14px', color: 'var(--text-primary)' }}>{quiz.title || 'Quiz'}</strong>
+                                <span className={`ta-badge ${isPublished ? 'badge-green' : 'badge-amber'}`}>
+                                  {isPublished ? 'Da gui' : 'Ban nhap'}
+                                </span>
+                              </div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                <span><FiLayers size={12} /> {quiz.space_name || 'Lop hoc'}</span>
+                                <span><FiFileText size={12} /> {quiz.total_questions || 0} cau hoi</span>
+                                <span><FiUser size={12} /> {quiz.total_attempts || 0} bai nop</span>
+                                <span><FiCheckCircle size={12} /> TB {quiz.average_score || 0} diem</span>
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                              {!isPublished && (
+                                <button className="ta-btn" onClick={() => handleEditQuiz(quiz.id)} title="Sua quiz">
+                                  <FiEdit3 />
+                                </button>
+                              )}
+                              <button
+                                className="vibrant-btn"
+                                style={{ padding: '8px 12px', fontSize: '12px' }}
+                                onClick={() => isPublished ? handleViewResults(quiz.id) : handleEditQuiz(quiz.id)}
+                              >
+                                {isPublished ? <FiBarChart2 /> : <FiEdit3 />}
+                                {isPublished ? 'Xem ket qua' : 'Sua quiz'}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="empty-state">
+                        <FiBarChart2 size={42} style={{ opacity: 0.2, marginBottom: '12px' }} />
+                        <p>Chua co quiz nao. Tao recap xong roi bam tao quiz tu recap.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <ScheduledQueueList queue={summaryQueue.filter(q => q.draft_type === 'lesson_recap')} taSpaces={spaces} onEdit={handleEditScheduled} onSendNow={handleApproveSummary} onCancelSchedule={handleCancelSchedule} onBulkCancel={handleBulkCancel} onBulkSendNow={handleBulkSendNow} isLoading={isSending} />
             </div>
           )}

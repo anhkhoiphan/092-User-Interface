@@ -20,7 +20,9 @@ const RecapWorkflow = (props) => {
     setSelectedSpaces = () => {},
     taSpaces = [],
     isHitlEnabled = true,
-    handleRefineAi = () => {}
+    handleRefineAi = () => {},
+    onGenerateQuiz = null,
+    generatingQuiz = false
   } = props;
 
   const [isEditing, setIsEditing] = useState(false);
@@ -325,6 +327,17 @@ const RecapWorkflow = (props) => {
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
                   <button className="ta-btn" style={{ padding: '8px 16px', fontFamily: 'inherit' }} onClick={() => { if (typeof setAiPreview === 'function') setAiPreview(null); }}>Hủy</button>
+                  {typeof onGenerateQuiz === 'function' && (
+                    <button
+                      className="ta-btn"
+                      style={{ padding: '8px 16px', fontFamily: 'inherit' }}
+                      onClick={() => onGenerateQuiz(aiPreview)}
+                      disabled={generatingQuiz}
+                    >
+                      {generatingQuiz ? <Icons.FiRefreshCw className="spin" /> : <Icons.FiHelpCircle />}
+                      {generatingQuiz ? 'Đang tạo quiz...' : 'Tạo quiz từ recap'}
+                    </button>
+                  )}
                   <button className="vibrant-btn"
                     style={{ padding: '8px 20px', fontFamily: 'inherit' }}
                     onClick={() => {

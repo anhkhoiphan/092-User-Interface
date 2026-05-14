@@ -4,6 +4,7 @@ import { useDispatch } from "react-redux";
 import { ReplyPreview } from "./MessageActions";
 import { renderMessageWithMentions } from "./MessageContent";
 import FileAttachment from "./FileAttachment";
+import QuizCard from "./QuizCard";
 import { getUserColor } from "../../utils/userColor";
 import { fetchMessages } from "../../store/slices/dmSlice";
 import { fetchRoomMessages } from "../../store/slices/messageSlice";
@@ -21,6 +22,12 @@ function ChatMessage({
   const isOwnMessage = msg.isOwn;
   const [isHovered, setIsHovered] = useState(false);
   const isFailed = msg.failed || isSending?.failed;
+  const quizCardData = parseQuizMessage(msg.content);
+
+  const handlePlayQuiz = (quizId) => {
+    window.history.pushState(null, "", `/quiz/${quizId}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
 
   return (
     <div
@@ -102,11 +109,21 @@ function ChatMessage({
           className="text-sm leading-relaxed"
           style={{ color: "var(--text-primary)" }}
         >
-          {renderMessageWithMentions(
-            msg.content,
-            isDark,
-            onShowProfile,
-            msg.isBot,
+          {quizCardData ? (
+            <QuizCard
+              quizId={quizCardData.quizId}
+              quizTitle={quizCardData.quizTitle}
+              questionCount={quizCardData.questionCount}
+              passingScore={quizCardData.passingScore}
+              onPlay={handlePlayQuiz}
+            />
+          ) : (
+            renderMessageWithMentions(
+              msg.content,
+              isDark,
+              onShowProfile,
+              msg.isBot,
+            )
           )}
           {msg.isEdited && (
             <span
@@ -156,6 +173,30 @@ function ChatMessage({
       </div>
     </div>
   );
+}
+
+function parseQuizMessage(content) {
+  if (!content || typeof content !== "string" || !content.includes("Quiz ID")) {
+    return null;
+  }
+
+  const quizId = content.match(/Quiz ID:\s*`?([0-9a-f-]{36})`?/i)?.[1];
+  if (!quizId) return null;
+
+  const title =
+    content.match(/\*\*([^*]+)\*\*/)?.[1]?.trim() ||
+    content.match(/^#?\s*(.+)$/m)?.[1]?.trim() ||
+    "Quiz";
+
+  const questionCount = Number(content.match(/(\d+)\s*câu hỏi/i)?.[1] || 0);
+  const passingScore = Number(content.match(/Cần\s*(\d+)\s*điểm/i)?.[1] || 60);
+
+  return {
+    quizId,
+    quizTitle: title,
+    questionCount,
+    passingScore,
+  };
 }
 
 function TypingIndicator({ isDark, senderName = "Đang nhập" }) {

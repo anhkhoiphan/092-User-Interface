@@ -14,6 +14,7 @@ import ManageAgent from "./components/createspace/ManageAgent";
 import ManageAgentTips from "./components/createspace/ManageAgentTips";
 import LoginPage from "./pages/LoginPage";
 import TADashboard from "./pages/TADashboard";
+import StudentQuizPage from "./pages/StudentQuizPage";
 import AppLoadingScreen from "./components/AppLoadingScreen";
 import { initializeAuth } from "./store/slices/authSlice";
 import {
@@ -50,16 +51,25 @@ function App() {
   const [memberListCollapsed, setMemberListCollapsed] = useState(false);
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
   const [isRoomSettingsOpen, setIsRoomSettingsOpen] = useState(false);
+  const [routePath, setRoutePath] = useState(window.location.pathname);
+  const quizRouteMatch = routePath.match(/^\/quiz\/([^/]+)$/);
 
   // 1. Auth initialization
   useEffect(() => {
-    if (window.location.pathname !== "/") {
+    if (window.location.pathname !== "/" && !window.location.pathname.match(/^\/quiz\/[^/]+$/)) {
       window.history.replaceState(null, "", "/");
+      setRoutePath("/");
     }
     if (!initialized && !loading) {
       dispatch(initializeAuth());
     }
   }, [dispatch, initialized, loading]);
+
+  useEffect(() => {
+    const handleRouteChange = () => setRoutePath(window.location.pathname);
+    window.addEventListener("popstate", handleRouteChange);
+    return () => window.removeEventListener("popstate", handleRouteChange);
+  }, []);
 
   // 2. Fetch ALL data once after auth is ready
   const preloadStartTime = useRef(null);
@@ -321,6 +331,10 @@ function App() {
   // 🆕 Loading all data after login
   if (appLoading) {
     return <AppLoadingScreen />;
+  }
+
+  if (quizRouteMatch) {
+    return <StudentQuizPage quizId={quizRouteMatch[1]} />;
   }
 
   const handleEditAgent = (agent) => {

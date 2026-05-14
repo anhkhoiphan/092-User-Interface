@@ -165,6 +165,71 @@ const taService = {
   createSummaryDraft: async (dto) => {
     const response = await api.post('/ta/summary-queue/draft', dto);
     return response.data;
+  },
+
+  // ==========================================
+  // QUIZ ENDPOINTS
+  // ==========================================
+
+  /**
+   * AI: Tạo quiz từ bài giảng
+   */
+  generateQuiz: async (dto) => {
+    const response = await api.post('/ta/quiz/generate', dto);
+    return response.data;
+  },
+
+  listQuizzes: async (spaceId) => {
+    const response = await api.get('/ta/quizzes', { params: { spaceId } });
+    return response.data;
+  },
+
+  /**
+   * Lấy quiz chi tiết (edit mode)
+   */
+  getQuiz: async (quizId) => {
+    const response = await api.get(`/ta/quiz/${quizId}`);
+    return response.data;
+  },
+
+  /**
+   * Cập nhật quiz
+   */
+  updateQuiz: async (quizId, dto) => {
+    const response = await api.put(`/ta/quiz/${quizId}`, dto);
+    return response.data;
+  },
+
+  /**
+   * Gửi quiz vào chat
+   */
+  sendQuiz: async (quizId, dto) => {
+    const response = await api.post(`/ta/quiz/${quizId}/send`, dto);
+    return response.data;
+  },
+
+  /**
+   * Lấy quiz cho học viên làm
+   */
+  getQuizForStudent: async (quizId) => {
+    const response = await api.get(`/ta/quiz/${quizId}/student`);
+    return response.data;
+  },
+
+  /**
+   * Submit quiz attempt
+   */
+  submitQuizAttempt: async (quizId, dto) => {
+    const response = await api.post(`/ta/quiz/${quizId}/submit`, dto);
+    return response.data;
+  },
+
+  /**
+   * Lấy quiz summary (TA)
+   */
+  getQuizSummary: async (quizId) => {
+    const response = await api.get(`/ta/quiz/${quizId}/summary`);
+    return response.data;
   }
 };
 
