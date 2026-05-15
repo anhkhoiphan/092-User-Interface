@@ -117,24 +117,30 @@ const taService = {
   /**
    * AI: Gọi Agent với File (PDF/Ảnh)
    */
-  callAgentWithFile: async (spaceId, query, senderId, file, conversationId) => {
+  callAgentWithFile: async (spaceId, query, senderId, file) => {
+    console.log('[TA Service] callAgentWithFile:', {
+      spaceId,
+      senderId,
+      fileName: file?.name,
+      fileSize: file?.size,
+      fileType: file?.type
+    });
+
     const formData = new FormData();
     formData.append('file', file);
     formData.append('query', query);
     formData.append('senderId', senderId);
 
-    let url = `/ta/agent/chat-with-file?spaceId=${spaceId}&query=${encodeURIComponent(query)}&senderId=${encodeURIComponent(senderId)}`;
-    if (conversationId) {
-      url += `&conversationId=${encodeURIComponent(conversationId)}`;
-    }
+    console.log('[TA Service] FormData prepared, entries:', Array.from(formData.keys()));
 
     try {
-      const response = await api.post(url, formData, {
+      const response = await api.post(`/ta/agent/chat-with-file?spaceId=${spaceId}&query=${encodeURIComponent(query)}&senderId=${encodeURIComponent(senderId)}`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
-        timeout: 180000
+        timeout: 60000
       });
+      console.log('[TA Service] callAgentWithFile success:', response.data);
       return response.data;
     } catch (error) {
       console.error('[TA Service] callAgentWithFile error:', {
