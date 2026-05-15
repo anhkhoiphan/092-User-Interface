@@ -249,7 +249,7 @@ const QuizPlayer = ({
       if (errorMessage?.includes('quá hạn') || submitError.response?.status === 403) {
         setIsDeadlinePassed(true);
         countdownRef.current = { timeRemaining: null, isDeadlinePassed: true };
-        setError('Đã quá hạn nộp bài. Quiz này không còn khả dụng.');
+        setError('Đã quá hạn nộp bài.');
       } else {
         setError(errorMessage || 'Không thể nộp quiz');
       }
