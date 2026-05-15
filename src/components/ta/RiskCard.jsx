@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FiClock, FiMessageSquare, FiCheckCircle, FiUser, FiBarChart2, FiInfo, FiZap } from 'react-icons/fi';
+import { FiClock, FiMessageSquare, FiCheckCircle, FiUser, FiBarChart2, FiInfo } from 'react-icons/fi';
 
 const RiskCard = ({ student, spaceName, onResolve, onGetContext, formatOfflineTime }) => {
   const [showBreakdown, setShowBreakdown] = useState(false);
@@ -7,16 +7,17 @@ const RiskCard = ({ student, spaceName, onResolve, onGetContext, formatOfflineTi
   const score = student.metadata?.score || 0;
   const level = student.level || (score >= 6 ? 'critical' : score >= 3 ? 'warning' : 'safe');
 
-  const signals = student.metadata?.signal_details || student.metadata?.signals || {};
+  const signals = student.metadata?.signals || {};
   const absencePoints = signals.absence_points || 0;
   const stuckPoints = signals.stuck_points || 0;
   const quizAvg = signals.quiz_avg_score !== undefined ? signals.quiz_avg_score : null;
 
-  // Score breakdown from 3 sources - use nullish coalescing for missing fields
-  const breakdown = student.score_breakdown || {};
-  const lastSeenNormalized = breakdown.last_seen_normalized ?? 0;
-  const fastApiNormalized = breakdown.fastapi_normalized ?? 0;
-  const quizNormalized = breakdown.quiz_normalized ?? 0;
+  // Score breakdown from 3 sources
+  const breakdown = student.score_breakdown || {
+    last_seen_normalized: 0,
+    fastapi_normalized: 0,
+    quiz_normalized: 0
+  };
 
   const riskColor = level === 'critical' ? 'var(--ta-red)' : level === 'warning' ? 'var(--ta-amber)' : 'var(--ta-green)';
   const riskLabel = level === 'critical' ? 'Nghiêm trọng' : level === 'warning' ? 'Cần chú ý' : 'An toàn';
@@ -72,27 +73,17 @@ const RiskCard = ({ student, spaceName, onResolve, onGetContext, formatOfflineTi
         <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
           {absencePoints > 0 && (
             <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: 'var(--ta-amber-bg)', color: 'var(--ta-amber)', fontWeight: 600 }}>
-              <FiClock size={10} style={{ verticalAlign: 'middle', marginRight: '2px' }} />Vắng {Math.floor(student.hours_since_active || 0)}h ({absencePoints}đ)
+              <FiClock size={10} style={{ verticalAlign: 'middle', marginRight: '2px' }} />Vắng {Math.floor(student.hours_since_active || 0)}h
             </span>
           )}
           {stuckPoints > 0 && (
             <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: 'var(--ta-blue-bg)', color: 'var(--ta-blue)', fontWeight: 600 }}>
-              <FiMessageSquare size={10} style={{ verticalAlign: 'middle', marginRight: '2px' }} />Stuck ({stuckPoints}đ)
-            </span>
-          )}
-          {signals.unanswered_q_points > 0 && (
-            <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: 'var(--ta-purple-bg)', color: 'var(--ta-purple)', fontWeight: 600 }}>
-              <FiMessageSquare size={10} style={{ verticalAlign: 'middle', marginRight: '2px' }} />Chưa trả lời ({signals.unanswered_q_points}đ)
-            </span>
-          )}
-          {signals.frustration_points > 0 && (
-            <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: 'var(--ta-red-bg)', color: 'var(--ta-red)', fontWeight: 600 }}>
-              <FiZap size={10} style={{ verticalAlign: 'middle', marginRight: '2px' }} />Frustration ({signals.frustration_points}đ)
+              <FiMessageSquare size={10} style={{ verticalAlign: 'middle', marginRight: '2px' }} />Khó khăn
             </span>
           )}
           {quizAvg !== null && quizAvg < 70 && (
-            <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: 'var(--ta-green-bg)', color: 'var(--ta-green)', fontWeight: 600 }}>
-              <FiBarChart2 size={10} style={{ verticalAlign: 'middle', marginRight: '2px' }} />Quiz: {quizAvg.toFixed(0)}
+            <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: 'var(--ta-purple-bg)', color: 'var(--ta-purple)', fontWeight: 600 }}>
+              <FiBarChart2 size={10} style={{ verticalAlign: 'middle', marginRight: '2px' }} />Điểm {quizAvg.toFixed(0)}
             </span>
           )}
         </div>
@@ -129,13 +120,13 @@ const RiskCard = ({ student, spaceName, onResolve, onGetContext, formatOfflineTi
             <div style={{ marginBottom: '6px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', marginBottom: '2px' }}>
                 <span>Vắng mặt</span>
-                <span>{lastSeenNormalized.toFixed(1)} / 10</span>
+                <span>{breakdown.last_seen_normalized?.toFixed(1)} / 10</span>
               </div>
               <div style={{ height: '6px', background: 'var(--border-primary)', borderRadius: '3px', overflow: 'hidden' }}>
                 <div style={{
-                  width: `${lastSeenNormalized * 10}%`,
+                  width: `${(breakdown.last_seen_normalized || 0) * 10}%`,
                   height: '100%',
-                  background: getScoreBarColor(lastSeenNormalized, 'last_seen')
+                  background: getScoreBarColor(breakdown.last_seen_normalized || 0, 'last_seen')
                 }} />
               </div>
             </div>
@@ -144,13 +135,13 @@ const RiskCard = ({ student, spaceName, onResolve, onGetContext, formatOfflineTi
             <div style={{ marginBottom: '6px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', marginBottom: '2px' }}>
                 <span>Tín hiệu chat</span>
-                <span>{fastApiNormalized.toFixed(1)} / 10</span>
+                <span>{breakdown.fastapi_normalized?.toFixed(1)} / 10</span>
               </div>
               <div style={{ height: '6px', background: 'var(--border-primary)', borderRadius: '3px', overflow: 'hidden' }}>
                 <div style={{
-                  width: `${fastApiNormalized * 10}%`,
+                  width: `${(breakdown.fastapi_normalized || 0) * 10}%`,
                   height: '100%',
-                  background: getScoreBarColor(fastApiNormalized, 'fastapi')
+                  background: getScoreBarColor(breakdown.fastapi_normalized || 0, 'fastapi')
                 }} />
               </div>
             </div>
@@ -159,13 +150,13 @@ const RiskCard = ({ student, spaceName, onResolve, onGetContext, formatOfflineTi
             <div style={{ marginBottom: '8px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', marginBottom: '2px' }}>
                 <span>Điểm Quiz</span>
-                <span>{quizNormalized.toFixed(1)} / 10</span>
+                <span>{breakdown.quiz_normalized?.toFixed(1)} / 10</span>
               </div>
               <div style={{ height: '6px', background: 'var(--border-primary)', borderRadius: '3px', overflow: 'hidden' }}>
                 <div style={{
-                  width: `${quizNormalized * 10}%`,
+                  width: `${(breakdown.quiz_normalized || 0) * 10}%`,
                   height: '100%',
-                  background: getScoreBarColor(quizNormalized, 'quiz')
+                  background: getScoreBarColor(breakdown.quiz_normalized || 0, 'quiz')
                 }} />
               </div>
             </div>
