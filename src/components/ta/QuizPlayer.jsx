@@ -46,7 +46,8 @@ const QuizPlayer = ({
         if (cached.quiz?.due_at) {
           const now = new Date();
           const deadline = new Date(cached.quiz.due_at);
-          const remaining = deadline.getTime() - now.getTime();
+          // Add 1 second buffer for potential clock skew between client and server
+          const remaining = deadline.getTime() - now.getTime() - 1000;
           if (remaining > 0) {
             setTimeRemaining(remaining);
             setIsDeadlinePassed(false);
@@ -81,7 +82,8 @@ const QuizPlayer = ({
             if (quizData?.due_at) {
               const now = new Date();
               const deadline = new Date(quizData.due_at);
-              const remaining = deadline.getTime() - now.getTime();
+              // Add 1 second buffer for potential clock skew between client and server
+              const remaining = deadline.getTime() - now.getTime() - 1000;
               if (remaining > 0) {
                 setTimeRemaining(remaining);
                 setIsDeadlinePassed(false);
@@ -241,7 +243,16 @@ const QuizPlayer = ({
       }
     } catch (submitError) {
       console.error('Failed to submit quiz:', submitError);
-      setError(submitError.response?.data?.message || 'Không thể nộp quiz');
+      const errorMessage = submitError.response?.data?.message || submitError.message;
+
+      // Handle deadline-specific error (race condition protection)
+      if (errorMessage?.includes('quá hạn') || submitError.response?.status === 403) {
+        setIsDeadlinePassed(true);
+        countdownRef.current = { timeRemaining: null, isDeadlinePassed: true };
+        setError('Đã quá hạn nộp bài. Quiz này không còn khả dụng.');
+      } else {
+        setError(errorMessage || 'Không thể nộp quiz');
+      }
     } finally {
       setSubmitting(false);
     }
