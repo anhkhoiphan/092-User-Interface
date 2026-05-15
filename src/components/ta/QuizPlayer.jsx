@@ -13,7 +13,6 @@ const QuizPlayer = ({
   const [submitting, setSubmitting] = useState(false);
   const [quiz, setQuiz] = useState(null);
   const [questions, setQuestions] = useState([]);
-  const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState({});
   const [submitted, setSubmitted] = useState(false);
   const [result, setResult] = useState(null);
@@ -23,6 +22,11 @@ const QuizPlayer = ({
   const [displayIsDeadlinePassed, setDisplayIsDeadlinePassed] = useState(false);
   const countdownRef = useRef({ timeRemaining: null, isDeadlinePassed: false });
   const cacheRef = useRef({});
+  // Track answered count for progress
+  const answeredCount = useMemo(
+    () => questions.filter((q) => answers[q.id] !== undefined).length,
+    [answers, questions]
+  );
 
   const isModal = displayMode === 'modal';
   const shouldRender = !isModal || isOpen;
@@ -113,13 +117,7 @@ const QuizPlayer = ({
     };
   }, [quizId, shouldRender]);
 
-  const currentQ = questions[currentQuestion] || null;
-  const progress = questions.length ? ((currentQuestion + 1) / questions.length) * 100 : 0;
-  const hasAnsweredCurrent = currentQ ? answers[currentQ.id] !== undefined : false;
-  const answeredCount = useMemo(
-    () => questions.filter((q) => answers[q.id] !== undefined).length,
-    [answers, questions]
-  );
+  const progress = questions.length ? (answeredCount / questions.length) * 100 : 0;
 
   // NEW: Format time remaining for display
   const formatTimeRemaining = (ms) => {
@@ -193,22 +191,13 @@ const QuizPlayer = ({
 
   if (!shouldRender) return null;
 
-  const handleSelectAnswer = (optionId) => {
-    if (!currentQ) return;
+  const handleSelectAnswer = (questionId, optionId) => {
     // NEW: Block answer selection if deadline passed (check ref for real-time status)
     if (countdownRef.current.isDeadlinePassed) return;
     setAnswers((prev) => ({
       ...prev,
-      [currentQ.id]: optionId
+      [questionId]: optionId
     }));
-  };
-
-  const handleNext = () => {
-    setCurrentQuestion((prev) => Math.min(prev + 1, questions.length - 1));
-  };
-
-  const handlePrevious = () => {
-    setCurrentQuestion((prev) => Math.max(prev - 1, 0));
   };
 
   const handleSubmit = async () => {
@@ -426,9 +415,10 @@ const QuizPlayer = ({
     );
   }
 
+  // Single-page scroll mode - show all questions
   return (
     <Shell>
-      <Header title={quiz.title || 'Quiz'} subtitle={`Câu ${currentQuestion + 1} / ${questions.length}`} />
+      <Header title={quiz.title || 'Quiz'} subtitle={`${questions.length} câu hỏi`} />
 
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: isModal ? '24px' : '0' }}>
         {/* NEW: Countdown timer display */}
@@ -447,7 +437,10 @@ const QuizPlayer = ({
             marginBottom: '20px',
             textAlign: 'center',
             fontWeight: 600,
-            fontSize: '14px'
+            fontSize: '14px',
+            position: 'sticky',
+            top: 0,
+            zIndex: 10
           }}>
             {displayIsDeadlinePassed ? (
               <>⏰ Đã quá hạn nộp bài</>
@@ -466,132 +459,94 @@ const QuizPlayer = ({
           <div style={{ width: `${progress}%`, height: '100%', background: 'var(--primary)', transition: 'width 0.3s ease' }} />
         </div>
 
-        <div className="ta-card-premium" style={{ padding: '24px', marginBottom: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
-            <span className="ta-badge" style={{ fontSize: '11px', padding: '4px 8px' }}>{currentQ.topic}</span>
-            <span className="ta-badge" style={{
-              fontSize: '11px',
-              padding: '4px 8px',
-              backgroundColor: currentQ.difficulty === 'easy' ? 'var(--ta-green-bg)' :
-                currentQ.difficulty === 'medium' ? 'var(--ta-amber-bg)' : 'var(--ta-red-bg)',
-              color: currentQ.difficulty === 'easy' ? 'var(--ta-green)' :
-                currentQ.difficulty === 'medium' ? 'var(--ta-amber)' : 'var(--ta-red)'
-            }}>
-              {currentQ.difficulty === 'easy' ? 'Dễ' : currentQ.difficulty === 'medium' ? 'Trung bình' : 'Khó'}
-            </span>
-          </div>
+        <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '20px' }}>
+          Đã trả lời {answeredCount}/{questions.length} câu
+        </div>
 
-          <h3 style={{ margin: '0 0 20px', fontSize: '15px', fontWeight: 600, lineHeight: 1.5 }}>
-            {currentQ.question_text}
-          </h3>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {normalizeOptions(currentQ.options).map((opt) => {
-              const selected = answers[currentQ.id] === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => handleSelectAnswer(opt.id)}
-                  style={{
-                    padding: '16px 20px',
-                    borderRadius: '8px',
-                    border: selected ? '2px solid var(--primary)' : '2px solid var(--border-primary)',
-                    background: selected ? 'var(--bg-surface-tertiary)' : 'var(--bg-surface)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                    textAlign: 'left',
-                    fontFamily: 'inherit'
-                  }}
-                >
-                  <span style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '50%',
-                    background: selected ? 'var(--primary)' : 'var(--bg-surface-tertiary)',
-                    color: selected ? 'white' : 'var(--text-muted)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 700,
-                    fontSize: '13px',
-                    flexShrink: 0
+        {/* Render all questions in a scrollable list */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {questions.map((q, qIndex) => {
+            const normalizedOptions = normalizeOptions(q.options);
+            const selectedAnswer = answers[q.id];
+            return (
+              <div key={q.id} className="ta-card-premium" style={{ padding: '24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                  <span className="ta-badge" style={{ fontSize: '11px', padding: '4px 8px' }}>Câu {qIndex + 1}</span>
+                  <span className="ta-badge" style={{ fontSize: '11px', padding: '4px 8px' }}>{q.topic}</span>
+                  <span className="ta-badge" style={{
+                    fontSize: '11px',
+                    padding: '4px 8px',
+                    backgroundColor: q.difficulty === 'easy' ? 'var(--ta-green-bg)' :
+                      q.difficulty === 'medium' ? 'var(--ta-amber-bg)' : 'var(--ta-red-bg)',
+                    color: q.difficulty === 'easy' ? 'var(--ta-green)' :
+                      q.difficulty === 'medium' ? 'var(--ta-amber)' : 'var(--ta-red)'
                   }}>
-                    {String(opt.id).toUpperCase()}
+                    {q.difficulty === 'easy' ? 'Dễ' : q.difficulty === 'medium' ? 'Trung bình' : 'Khó'}
                   </span>
-                  <span style={{ fontSize: '14px', flex: 1 }}>{opt.text}</span>
-                  {selected && <Icons.FiCheckCircle size={20} color="var(--primary)" />}
-                </button>
-              );
-            })}
-          </div>
+                </div>
+
+                <h3 style={{ margin: '0 0 20px', fontSize: '15px', fontWeight: 600, lineHeight: 1.5 }}>
+                  {q.question_text}
+                </h3>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {normalizedOptions.map((opt) => {
+                    const selected = selectedAnswer === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => handleSelectAnswer(q.id, opt.id)}
+                        style={{
+                          padding: '16px 20px',
+                          borderRadius: '8px',
+                          border: selected ? '2px solid var(--primary)' : '2px solid var(--border-primary)',
+                          background: selected ? 'var(--bg-surface-tertiary)' : 'var(--bg-surface)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          textAlign: 'left',
+                          fontFamily: 'inherit'
+                        }}
+                      >
+                        <span style={{
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: '50%',
+                          background: selected ? 'var(--primary)' : 'var(--bg-surface-tertiary)',
+                          color: selected ? 'white' : 'var(--text-muted)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 700,
+                          fontSize: '13px',
+                          flexShrink: 0
+                        }}>
+                          {String(opt.id).toUpperCase()}
+                        </span>
+                        <span style={{ fontSize: '14px', flex: 1 }}>{opt.text}</span>
+                        {selected && <Icons.FiCheckCircle size={20} color="var(--primary)" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '20px' }}>
-          <button className="ta-btn" onClick={handlePrevious} disabled={currentQuestion === 0} style={{ padding: '12px 20px' }}>
-            <Icons.FiArrowLeft /> Trước
+        {/* Submit button at the bottom */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', marginTop: '32px', marginBottom: '40px' }}>
+          <button
+            className={answeredCount > 0 && !countdownRef.current.isDeadlinePassed ? 'vibrant-btn' : 'ta-btn'}
+            onClick={handleSubmit}
+            disabled={submitting || countdownRef.current.isDeadlinePassed}
+            style={{ padding: '16px 32px', fontSize: '15px' }}
+          >
+            {submitting ? <Icons.FiRefreshCw className="spin" /> : countdownRef.current.isDeadlinePassed ? 'Đã quá hạn' : <><Icons.FiCheckSquare /> Nộp bài</>}
           </button>
-
-          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-            Đã trả lời {answeredCount}/{questions.length}
-            {countdownRef.current.isDeadlinePassed && <span style={{ color: 'var(--ta-red)', fontWeight: 600, marginLeft: '8px' }}>⏰ Đã quá hạn</span>}
-          </span>
-
-          {currentQuestion === questions.length - 1 ? (
-            <button
-              className={hasAnsweredCurrent && !countdownRef.current.isDeadlinePassed ? 'vibrant-btn' : 'ta-btn'}
-              onClick={handleSubmit}
-              disabled={!hasAnsweredCurrent || submitting || countdownRef.current.isDeadlinePassed}
-              style={{ padding: '12px 24px' }}
-            >
-              {submitting ? <Icons.FiRefreshCw className="spin" /> : countdownRef.current.isDeadlinePassed ? 'Đã quá hạn' : <><Icons.FiCheckSquare /> Hoàn thành</>}
-            </button>
-          ) : (
-            <button
-              className={hasAnsweredCurrent ? 'vibrant-btn' : 'ta-btn'}
-              onClick={handleNext}
-              disabled={!hasAnsweredCurrent}
-              style={{ padding: '12px 20px' }}
-            >
-              Tiếp <Icons.FiArrowRight />
-            </button>
-          )}
-        </div>
-
-        <div className="ta-card-premium" style={{ padding: '16px' }}>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px' }}>
-            Điều hướng câu hỏi
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-            {questions.map((q, idx) => (
-              <button
-                key={q.id}
-                type="button"
-                onClick={() => setCurrentQuestion(idx)}
-                style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '8px',
-                  border: idx === currentQuestion ? '2px solid var(--primary)' : '1px solid var(--border-primary)',
-                  background: idx === currentQuestion ? 'var(--bg-surface-tertiary)' :
-                    answers[q.id] ? 'var(--ta-green-bg)' : 'var(--bg-surface)',
-                  color: idx === currentQuestion ? 'var(--primary)' :
-                    answers[q.id] ? 'var(--ta-green)' : 'var(--text-muted)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontWeight: 600,
-                  fontSize: '12px',
-                  cursor: 'pointer'
-                }}
-              >
-                {idx + 1}
-              </button>
-            ))}
-          </div>
         </div>
       </div>
     </Shell>
