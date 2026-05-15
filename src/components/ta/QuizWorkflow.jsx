@@ -115,6 +115,7 @@ const QuizWorkflow = ({ quizId, spaceId, onBack, onSave, onSend, onViewResults }
     description: quiz.description,
     status: quiz.status,
     passing_score: quiz.passing_score || 60,
+    due_at: quiz.due_at || null,
     questions: questions.map(toQuestionPayload)
   });
 
@@ -286,6 +287,17 @@ const QuizWorkflow = ({ quizId, spaceId, onBack, onSave, onSend, onViewResults }
               />
               <span style={{ fontSize: '24px', fontWeight: 700, color: 'var(--primary)', fontFamily: 'inherit' }}>%</span>
             </div>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px', fontFamily: 'inherit' }}>Hạn nộp</label>
+            <input
+              className="ta-input"
+              type="datetime-local"
+              value={quiz.due_at || ''}
+              onChange={(e) => setQuiz({ ...quiz, due_at: e.target.value || null })}
+              placeholder="Chọn hạn nộp..."
+            />
+            <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>Để trống nếu không giới hạn</div>
           </div>
           <div>
             <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px', fontFamily: 'inherit' }}>Trạng thái</label>
