@@ -18,17 +18,13 @@ import {
   updateUserStatus,
   fetchMessages,
 } from "../store/slices/dmSlice";
-import {
-  fetchRoomMessages,
-  addMessage,
-  updateMessage as updateRoomMessage,
-} from "../store/slices/messageSlice";
+import { fetchRoomMessages } from "../store/slices/messageSlice";
+import { addMessage } from "../store/slices/messageSlice";
 import {
   createRoom,
   clearRoomUnreadCount,
 } from "../store/slices/spaceSlice";
 import socketService from "../services/socket.service";
-import { messageService } from "../services/message.service";
 
 function ChatArea({
   activeView,
@@ -508,18 +504,6 @@ function ChatArea({
       });
     })();
 
-    const rawAttachments = msg.attachments || [];
-    const normalizedAttachments = rawAttachments.map((att) => ({
-      name: att.file_name || att.name || "file",
-      type: (att.file_type || att.type || "").includes("image")
-        ? "image"
-        : (att.file_name || att.name || "").toLowerCase().endsWith(".pdf") ||
-          (att.file_type || att.type || "").includes("pdf")
-        ? "pdf"
-        : "other",
-      url: att.file_url || att.url || att.previewUrl || "",
-    }));
-
     return {
       id: msg.id,
       sender: senderName,
@@ -535,8 +519,6 @@ function ChatArea({
       pending: msg.pending || false,
       is_read: msg.is_read,
       created_at: msg.created_at,
-      hasAttachment: normalizedAttachments.length > 0,
-      attachments: normalizedAttachments,
     };
   });
 
@@ -617,99 +599,12 @@ function ChatArea({
         ? `Nhắn tin trong #${currentRoomInfo.name}...`
         : "Nhắn tin cho nhóm học...";
 
-  // Gọi Python AI API khi user gửi file kèm @StudyBot
-  const AGENT_API = "https://anhkhoiphan-092-agent-api.hf.space/api/v1";
-
-  const callStudyBotWithFile = useCallback(
-    async (query, fileObj, convId) => {
-      const rawFile = fileObj.file;
-      const isPdf =
-        rawFile.type === "application/pdf" ||
-        rawFile.name?.toLowerCase().endsWith(".pdf");
-      const endpoint = isPdf ? "chat_with_pdf" : "chat_with_image";
-
-      const loadingId = `studybot-${Date.now()}`;
-      const loadingMsg = {
-        id: loadingId,
-        sender: { id: "studybot", display_name: "StudyBot" },
-        sender_id: "studybot",
-        content: "⏳ Đang xử lý file...",
-        created_at: new Date().toISOString(),
-        pending: true,
-      };
-
-      if (isSpaceRoom && room) {
-        dispatch(addMessage({ roomId: room, message: loadingMsg }));
-      } else if (isDM && convId) {
-        dispatch(addDMMessage({ conversationId: convId, message: loadingMsg }));
-      }
-
-      const formData = new FormData();
-      formData.append("file", rawFile);
-      formData.append(
-        "conversation_id",
-        isSpaceRoom ? `room-${room}` : convId,
-      );
-      formData.append(
-        "sender_id",
-        currentUser?.username ||
-          currentUser?.display_name ||
-          currentUser?.id ||
-          "user",
-      );
-      formData.append("query", query);
-
-      try {
-        const res = await fetch(`${AGENT_API}/${endpoint}`, {
-          method: "POST",
-          body: formData,
-        });
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.detail || `HTTP ${res.status}`);
-        }
-        const data = await res.json();
-        const updates = {
-          content: data.answer || "(Không có phản hồi)",
-          pending: false,
-        };
-        if (isSpaceRoom && room) {
-          dispatch(
-            updateRoomMessage({ roomId: room, messageId: loadingId, updates }),
-          );
-        } else if (isDM && convId) {
-          dispatch(
-            updateMessage({ conversationId: convId, messageId: loadingId, updates }),
-          );
-        }
-      } catch (err) {
-        console.error("[StudyBot]", err);
-        const updates = {
-          content: `❌ Lỗi xử lý file: ${err.message}`,
-          pending: false,
-          failed: true,
-        };
-        if (isSpaceRoom && room) {
-          dispatch(
-            updateRoomMessage({ roomId: room, messageId: loadingId, updates }),
-          );
-        } else if (isDM && convId) {
-          dispatch(
-            updateMessage({ conversationId: convId, messageId: loadingId, updates }),
-          );
-        }
-      }
-    },
-    [currentUser, isDM, isSpaceRoom, room, dispatch],
-  );
-
   // Handle send message via WebSocket
   const handleSend = useCallback(
     async (content, replyToMsg, files) => {
-      console.log("[ChatArea] handleSend called:", { content: content.slice(0, 50), filesLen: files?.length, isDM, isSpaceRoom, room });
-      if (!content.trim() && !files?.length) return;
+      if (!content.trim()) return;
 
-      if (isDM && !isSpaceRoom) {
+      if (isDM) {
         // Guard: prevent chatting with self
         if (dmUser?.id && dmUser.id === currentUser?.id) {
           console.warn("Cannot send message to yourself");
@@ -927,10 +822,6 @@ function ChatArea({
         // Existing conversation path
         socketService.sendDM(conversationId, contentTrimmed, msgTempId);
 
-        if (files?.length > 0 && /@StudyBot/i.test(contentTrimmed)) {
-          callStudyBotWithFile(contentTrimmed, files[0], conversationId);
-        }
-
         dispatch(
           addDMMessage({
             conversationId,
@@ -958,21 +849,7 @@ function ChatArea({
         const msgTempId = `temp-${Date.now()}`;
         const contentTrimmed = content.trim();
 
-        // Build optimistic attachments from local preview (immediate, no upload yet)
-        let optimisticAttachments = [];
-        if (files?.length > 0) {
-          const fileObj = files[0];
-          const previewUrl = fileObj.preview || (fileObj.file ? URL.createObjectURL(fileObj.file) : null);
-          if (previewUrl) {
-            optimisticAttachments = [{
-              file_name: fileObj.name || fileObj.file?.name || "file",
-              file_type: fileObj.file?.type || "",
-              file_url: previewUrl,
-            }];
-          }
-        }
-
-        // Optimistic UI — dispatch IMMEDIATELY before any async work
+        // Optimistic UI - same format as DM
         const optimisticMsg = {
           id: msgTempId,
           sender: {
@@ -985,7 +862,6 @@ function ChatArea({
           created_at: new Date().toISOString(),
           is_read: false,
           pending: true,
-          attachments: optimisticAttachments,
         };
 
         // Track sending message
@@ -1011,33 +887,9 @@ function ChatArea({
         }, 10000);
 
         dispatch(addMessage({ roomId: room, message: optimisticMsg }));
-
-        // Upload file if present (after optimistic dispatch)
-        let attachment = null;
-        if (files?.length > 0) {
-          try {
-            const fileObj = files[0];
-            console.log("[ChatArea] Uploading file:", fileObj.name, fileObj.file?.type, fileObj.file?.size);
-            const uploadRes = await messageService.uploadFileToStorage(fileObj.file, { roomId: room });
-            const fileData = uploadRes.data?.data || uploadRes.data;
-            console.log("[ChatArea] Upload success, fileData:", fileData);
-            attachment = {
-              file_url: fileData.fileUrl || fileData.file_url,
-              file_name: fileData.fileName || fileData.file_name || fileObj.name,
-              file_type: fileData.fileType || fileData.file_type,
-              file_size: fileData.fileSize || fileData.file_size,
-              mime_type: fileData.mimeType || fileData.mime_type,
-            };
-            console.log("[ChatArea] attachment to send:", attachment);
-          } catch (err) {
-            console.error("[ChatArea] File upload failed:", err?.response?.data || err?.message || err);
-          }
-        }
-
-        // Send via WebSocket (with real URL if upload succeeded)
-        // Backend will detect @StudyBot mention and call agent with the file URL automatically
-        console.log("[ChatArea] sendMessage:", { roomId: room, content: contentTrimmed, tempId: msgTempId, hasAttachment: !!attachment });
-        socketService.sendMessage({ roomId: room, content: contentTrimmed, tempId: msgTempId, attachment });
+        
+        // Send with tempId so BE can echo it back
+        socketService.sendMessage({ roomId: room, content: contentTrimmed, tempId: msgTempId });
 
         // Stop typing
         socketService.emitStopTyping(room);
@@ -1062,7 +914,7 @@ function ChatArea({
         dispatch(addMessage({ roomId: room, message: newMessage }));
       }
     },
-    [isDM, activeConversationId, dmUser, currentUser, dispatch, room, isSpaceRoom, isBotRoom, callStudyBotWithFile],
+    [isDM, activeConversationId, dmUser, currentUser, dispatch, room, isSpaceRoom, isBotRoom],
   );
 
   // Handle typing indicator
