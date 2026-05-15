@@ -611,13 +611,13 @@ ${compileRules(g.rules)}
   };
 
   const handleDeleteQuizFromList = async (quizId) => {
-    if (!confirm('Bạn có chắc muốn xóa quiz này? Hành động này không thể hoàn tác.')) return;
+    if (!confirm('Bạn có chắc muốn lưu trữ quiz này? Quiz sẽ không hiển thị cho học viên nữa nhưng có thể khôi phục sau.')) return;
     try {
       await taService.updateQuiz(quizId, { status: 'archived' });
-      addToast('Đã xóa quiz!');
+      addToast('Đã lưu trữ quiz!');
       fetchData();
     } catch (error) {
-      addToast('Không thể xóa quiz', 'error');
+      addToast('Không thể lưu trữ quiz', 'error');
     }
   };
 
@@ -1039,10 +1039,10 @@ ${compileRules(g.rules)}
                                   <button
                                     className="ta-btn"
                                     onClick={() => handleDeleteQuizFromList(quiz.id)}
-                                    title="Lưu trữ quiz"
+                                    title="Lưu trữ quiz - Ẩn khỏi học viên nhưng có thể khôi phục"
                                     style={{ color: 'var(--ta-red)' }}
                                   >
-                                    <FiArchive />
+                                    <FiArchive /> Lưu trữ
                                   </button>
                                 </>
                               ) : (

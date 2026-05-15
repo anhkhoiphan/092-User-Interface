@@ -276,10 +276,11 @@ const QuizPlayer = ({
       }}>
         <div style={{
           background: 'var(--bg-primary)',
-          borderRadius: '12px',
-          maxWidth: '900px',
-          maxHeight: '90vh',
+          borderRadius: '12px 12px 0 0',
+          maxWidth: '100%',
+          maxHeight: '100vh',
           width: '100%',
+          height: '100vh',
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column'
@@ -435,7 +436,7 @@ const QuizPlayer = ({
     <Shell>
       <Header title={quiz.title || 'Quiz'} subtitle={`Câu ${currentQuestion + 1} / ${questions.length}`} />
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: isModal ? '24px' : '0' }}>
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: isModal ? '24px' : '0' }}>
         {/* NEW: Countdown timer display */}
         {quiz?.due_at && !submitted && (
           <div style={{
