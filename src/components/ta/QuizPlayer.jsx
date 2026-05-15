@@ -65,7 +65,6 @@ const QuizPlayer = ({
         // Fetch from API
         setQuiz(null);
         setQuestions([]);
-        setCurrentQuestion(0);
         setAnswers({});
         setSubmitted(false);
         setResult(null);
@@ -490,7 +489,7 @@ const QuizPlayer = ({
                 </h3>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {normalizedOptions.map((opt) => {
+                  {q.options.map((opt, optIdx) => {
                     const selected = selectedAnswer === opt.id;
                     return (
                       <button
