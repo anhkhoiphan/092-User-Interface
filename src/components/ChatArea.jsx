@@ -18,8 +18,11 @@ import {
   updateUserStatus,
   fetchMessages,
 } from "../store/slices/dmSlice";
-import { fetchRoomMessages } from "../store/slices/messageSlice";
-import { addMessage } from "../store/slices/messageSlice";
+import {
+  fetchRoomMessages,
+  addMessage,
+  updateMessage as updateRoomMessage,
+} from "../store/slices/messageSlice";
 import {
   createRoom,
   clearRoomUnreadCount,
@@ -599,6 +602,92 @@ function ChatArea({
         ? `Nhắn tin trong #${currentRoomInfo.name}...`
         : "Nhắn tin cho nhóm học...";
 
+  // Gọi Python AI API khi user gửi file kèm @StudyBot
+  const AGENT_API = "https://anhkhoiphan-092-agent-api.hf.space/api/v1";
+
+  const callStudyBotWithFile = useCallback(
+    async (query, fileObj, convId) => {
+      const rawFile = fileObj.file;
+      const isPdf =
+        rawFile.type === "application/pdf" ||
+        rawFile.name?.toLowerCase().endsWith(".pdf");
+      const endpoint = isPdf ? "chat_with_pdf" : "chat_with_image";
+
+      const loadingId = `studybot-${Date.now()}`;
+      const loadingMsg = {
+        id: loadingId,
+        sender: { id: "studybot", display_name: "StudyBot" },
+        sender_id: "studybot",
+        content: "⏳ Đang xử lý file...",
+        created_at: new Date().toISOString(),
+        pending: true,
+      };
+
+      if (isSpaceRoom && room) {
+        dispatch(addMessage({ roomId: room, message: loadingMsg }));
+      } else if (isDM && convId) {
+        dispatch(addDMMessage({ conversationId: convId, message: loadingMsg }));
+      }
+
+      const formData = new FormData();
+      formData.append("file", rawFile);
+      formData.append(
+        "conversation_id",
+        isSpaceRoom ? `room-${room}` : convId,
+      );
+      formData.append(
+        "sender_id",
+        currentUser?.username ||
+          currentUser?.display_name ||
+          currentUser?.id ||
+          "user",
+      );
+      formData.append("query", query);
+
+      try {
+        const res = await fetch(`${AGENT_API}/${endpoint}`, {
+          method: "POST",
+          body: formData,
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.detail || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        const updates = {
+          content: data.answer || "(Không có phản hồi)",
+          pending: false,
+        };
+        if (isSpaceRoom && room) {
+          dispatch(
+            updateRoomMessage({ roomId: room, messageId: loadingId, updates }),
+          );
+        } else if (isDM && convId) {
+          dispatch(
+            updateMessage({ conversationId: convId, messageId: loadingId, updates }),
+          );
+        }
+      } catch (err) {
+        console.error("[StudyBot]", err);
+        const updates = {
+          content: `❌ Lỗi xử lý file: ${err.message}`,
+          pending: false,
+          failed: true,
+        };
+        if (isSpaceRoom && room) {
+          dispatch(
+            updateRoomMessage({ roomId: room, messageId: loadingId, updates }),
+          );
+        } else if (isDM && convId) {
+          dispatch(
+            updateMessage({ conversationId: convId, messageId: loadingId, updates }),
+          );
+        }
+      }
+    },
+    [currentUser, isDM, isSpaceRoom, room, dispatch],
+  );
+
   // Handle send message via WebSocket
   const handleSend = useCallback(
     async (content, replyToMsg, files) => {
@@ -822,6 +911,10 @@ function ChatArea({
         // Existing conversation path
         socketService.sendDM(conversationId, contentTrimmed, msgTempId);
 
+        if (files?.length > 0 && /@StudyBot/i.test(contentTrimmed)) {
+          callStudyBotWithFile(contentTrimmed, files[0], conversationId);
+        }
+
         dispatch(
           addDMMessage({
             conversationId,
@@ -891,6 +984,10 @@ function ChatArea({
         // Send with tempId so BE can echo it back
         socketService.sendMessage({ roomId: room, content: contentTrimmed, tempId: msgTempId });
 
+        if (files?.length > 0 && /@StudyBot/i.test(contentTrimmed)) {
+          callStudyBotWithFile(contentTrimmed, files[0], null);
+        }
+
         // Stop typing
         socketService.emitStopTyping(room);
         if (typingTimeoutRef.current) {
@@ -914,7 +1011,7 @@ function ChatArea({
         dispatch(addMessage({ roomId: room, message: newMessage }));
       }
     },
-    [isDM, activeConversationId, dmUser, currentUser, dispatch, room, isSpaceRoom, isBotRoom],
+    [isDM, activeConversationId, dmUser, currentUser, dispatch, room, isSpaceRoom, isBotRoom, callStudyBotWithFile],
   );
 
   // Handle typing indicator
