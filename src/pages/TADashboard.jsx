@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
-import { 
-  FiAlertCircle, FiRefreshCw, FiFileText, FiActivity, FiSettings, 
-  FiTrendingUp, FiSend, FiBarChart2, FiCpu, FiClock, FiTrash2, 
-  FiLayers, FiFilter, FiEdit3, FiMessageSquare, FiUser, FiCheckCircle, FiCheck, FiX, FiChevronRight, FiCheckSquare, FiZap, FiRotateCcw, FiSave, FiChevronDown, FiGlobe, FiSmile, FiBriefcase, FiList, FiStar
+import {
+  FiAlertCircle, FiRefreshCw, FiFileText, FiActivity, FiSettings,
+  FiTrendingUp, FiSend, FiBarChart2, FiCpu, FiClock, FiTrash2,
+  FiLayers, FiFilter, FiEdit3, FiMessageSquare, FiUser, FiCheckCircle, FiCheck, FiX, FiChevronRight, FiCheckSquare, FiZap, FiRotateCcw, FiSave, FiChevronDown, FiGlobe, FiSmile, FiBriefcase, FiList, FiStar, FiArchive, FiEye, FiArrowLeft
 } from 'react-icons/fi';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
@@ -611,19 +611,47 @@ ${compileRules(g.rules)}
   };
 
   const handleDeleteQuizFromList = async (quizId) => {
-    if (!confirm('Bạn có chắc muốn xóa quiz này? Hành động này không thể hoàn tác.')) return;
+    if (!confirm('Bạn có chắc muốn lưu trữ quiz này? Quiz sẽ không hiển thị cho học viên nữa nhưng có thể khôi phục sau.')) return;
     try {
       await taService.updateQuiz(quizId, { status: 'archived' });
-      addToast('Đã xóa quiz!');
+      addToast('Đã lưu trữ quiz!');
       fetchData();
     } catch (error) {
-      addToast('Không thể xóa quiz', 'error');
+      addToast('Không thể lưu trữ quiz', 'error');
+    }
+  };
+
+  const handleRecallQuiz = async (quizId) => {
+    if (!confirm('Bạn có chắc muốn thu hồi quiz này? Học viên sẽ không thể làm quiz nữa.')) return;
+    try {
+      await taService.updateQuiz(quizId, { status: 'draft' });
+      addToast('Đã thu hồi quiz!');
+      fetchData();
+    } catch (error) {
+      addToast('Không thể thu hồi quiz', 'error');
+    }
+  };
+
+  const handleRestoreQuiz = async (quizId) => {
+    try {
+      await taService.updateQuiz(quizId, { status: 'draft' });
+      addToast('Đã khôi phục quiz!');
+      fetchData();
+    } catch (error) {
+      addToast('Không thể khôi phục quiz', 'error');
     }
   };
 
   const visibleQuizList = selectedSpaces.length > 0
     ? quizList.filter(quiz => selectedSpaces.includes(quiz.space_id))
     : quizList;
+
+  // Sort by sent_to_chat_at (priority) then generated_at, descending
+  const sortedQuizList = [...visibleQuizList].sort((a, b) => {
+    const aTime = a.sent_to_chat_at || a.generated_at || '';
+    const bTime = b.sent_to_chat_at || b.generated_at || '';
+    return new Date(bTime).getTime() - new Date(aTime).getTime();
+  });
 
   const RuleCheckbox = ({ label, checked, onChange }) => (
     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', padding: '6px 12px', background: 'var(--bg-surface-tertiary)', borderRadius: '8px', border: checked ? '1px solid var(--primary)' : '1px solid var(--border-primary)', transition: '0.2s' }}>
@@ -946,13 +974,13 @@ ${compileRules(g.rules)}
                 <div className="ta-card-premium" style={{ marginTop: '24px' }}>
                   <div className="card-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
                     <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <FiBarChart2 /> Bảng điểm quiz
+                      <FiBarChart2 /> Danh sách quiz
                     </h3>
-                    <span className="ta-badge">{visibleQuizList.length} quiz</span>
+                    <span className="ta-badge">{sortedQuizList.length} quiz</span>
                   </div>
                   <div className="ta-card-body" style={{ padding: '12px 0' }}>
-                    {visibleQuizList.length > 0 ? (
-                      visibleQuizList.map((quiz) => {
+                    {sortedQuizList.length > 0 ? (
+                      sortedQuizList.map((quiz) => {
                         const isPublished = quiz.status === 'published';
                         return (
                           <div key={quiz.id} className="ta-list-row" style={{ alignItems: 'center', gap: '16px' }}>
@@ -971,7 +999,25 @@ ${compileRules(g.rules)}
                               </div>
                             </div>
                             <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                              {!isPublished ? (
+                              {quiz.status === 'published' ? (
+                                <>
+                                  <button
+                                    className="ta-btn"
+                                    style={{ padding: '8px 12px', fontSize: '12px', minWidth: '80px', color: 'var(--ta-amber)' }}
+                                    onClick={() => handleRecallQuiz(quiz.id)}
+                                    title="Thu hồi quiz - Học viên không thể làm nữa"
+                                  >
+                                    <FiArrowLeft /> Thu hồi
+                                  </button>
+                                  <button
+                                    className="vibrant-btn"
+                                    style={{ padding: '8px 12px', fontSize: '12px' }}
+                                    onClick={() => handleViewResults(quiz.id)}
+                                  >
+                                    <FiBarChart2 /> Kết quả
+                                  </button>
+                                </>
+                              ) : quiz.status === 'draft' ? (
                                 <>
                                   <button
                                     className="vibrant-btn"
@@ -990,18 +1036,34 @@ ${compileRules(g.rules)}
                                   <button className="ta-btn" onClick={() => handleEditQuiz(quiz.id)} title="Sửa quiz">
                                     <FiEdit3 />
                                   </button>
-                                  <button className="ta-btn" onClick={() => handleDeleteQuizFromList(quiz.id)} title="Xóa quiz" style={{ color: 'var(--ta-red)' }}>
-                                    <FiTrash2 />
+                                  <button
+                                    className="ta-btn"
+                                    onClick={() => handleDeleteQuizFromList(quiz.id)}
+                                    title="Lưu trữ quiz - Ẩn khỏi học viên nhưng có thể khôi phục"
+                                    style={{ color: 'var(--ta-red)' }}
+                                  >
+                                    <FiArchive /> Lưu trữ
                                   </button>
                                 </>
                               ) : (
-                                <button
-                                  className="vibrant-btn"
-                                  style={{ padding: '8px 12px', fontSize: '12px' }}
-                                  onClick={() => handleViewResults(quiz.id)}
-                                >
-                                  <FiBarChart2 /> Xem kết quả
-                                </button>
+                                // archived status
+                                <>
+                                  <button
+                                    className="ta-btn"
+                                    style={{ padding: '8px 12px', fontSize: '12px', minWidth: '80px', color: 'var(--ta-green)' }}
+                                    onClick={() => handleRestoreQuiz(quiz.id)}
+                                    title="Khôi phục quiz về draft"
+                                  >
+                                    <FiRotateCcw /> Khôi phục
+                                  </button>
+                                  <button
+                                    className="ta-btn"
+                                    onClick={() => handleEditQuiz(quiz.id)}
+                                    title="Xem chi tiết"
+                                  >
+                                    <FiEye />
+                                  </button>
+                                </>
                               )}
                             </div>
                           </div>
