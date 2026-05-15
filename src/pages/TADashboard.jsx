@@ -646,6 +646,13 @@ ${compileRules(g.rules)}
     ? quizList.filter(quiz => selectedSpaces.includes(quiz.space_id))
     : quizList;
 
+  // Sort by sent_to_chat_at (priority) then generated_at, descending
+  const sortedQuizList = [...visibleQuizList].sort((a, b) => {
+    const aTime = a.sent_to_chat_at || a.generated_at || '';
+    const bTime = b.sent_to_chat_at || b.generated_at || '';
+    return new Date(bTime).getTime() - new Date(aTime).getTime();
+  });
+
   const RuleCheckbox = ({ label, checked, onChange }) => (
     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', padding: '6px 12px', background: 'var(--bg-surface-tertiary)', borderRadius: '8px', border: checked ? '1px solid var(--primary)' : '1px solid var(--border-primary)', transition: '0.2s' }}>
       <input type="checkbox" checked={checked} onChange={onChange} style={{ width: '14px', height: '14px' }} />
@@ -967,13 +974,13 @@ ${compileRules(g.rules)}
                 <div className="ta-card-premium" style={{ marginTop: '24px' }}>
                   <div className="card-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
                     <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <FiBarChart2 /> Bảng điểm quiz
+                      <FiBarChart2 /> Danh sách quiz
                     </h3>
-                    <span className="ta-badge">{visibleQuizList.length} quiz</span>
+                    <span className="ta-badge">{sortedQuizList.length} quiz</span>
                   </div>
                   <div className="ta-card-body" style={{ padding: '12px 0' }}>
-                    {visibleQuizList.length > 0 ? (
-                      visibleQuizList.map((quiz) => {
+                    {sortedQuizList.length > 0 ? (
+                      sortedQuizList.map((quiz) => {
                         const isPublished = quiz.status === 'published';
                         return (
                           <div key={quiz.id} className="ta-list-row" style={{ alignItems: 'center', gap: '16px' }}>

@@ -161,8 +161,8 @@ const QuizPlayer = ({
           setError('Đã quá hạn nộp bài. Bạn không thể nộp quiz này nữa.');
         }
       } else {
-        // Round to nearest minute to reduce re-renders - only update when minute changes
-        const roundedRemaining = Math.floor(remaining / 60000) * 60000;
+        // Round to nearest second to reduce re-renders - update every second for smooth countdown
+      const roundedRemaining = Math.floor(remaining / 1000) * 1000;
         if (countdownRef.current.timeRemaining !== roundedRemaining) {
           setTimeRemaining(roundedRemaining);
           setIsDeadlinePassed(false);
