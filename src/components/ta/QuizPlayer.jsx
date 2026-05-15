@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import * as Icons from 'react-icons/fi';
 import taService from '../../services/ta.service';
 
@@ -21,6 +21,8 @@ const QuizPlayer = ({
   // NEW: Countdown timer state
   const [timeRemaining, setTimeRemaining] = useState(null);
   const [isDeadlinePassed, setIsDeadlinePassed] = useState(false);
+  // Use ref to persist countdown across re-renders and avoid flash on reload
+  const countdownRef = useRef({ timeRemaining: null, isDeadlinePassed: false });
 
   const isModal = displayMode === 'modal';
   const shouldRender = !isModal || isOpen;
@@ -44,8 +46,24 @@ const QuizPlayer = ({
         if (cancelled) return;
 
         if (res.success) {
-          setQuiz(res.data.quiz);
+          const quizData = res.data.quiz;
+          setQuiz(quizData);
           setQuestions((res.data.questions || []).map(normalizeQuestion));
+          // Preserve countdown state to avoid flash on reload
+          if (quizData?.due_at) {
+            const now = new Date();
+            const deadline = new Date(quizData.due_at);
+            const remaining = deadline.getTime() - now.getTime();
+            if (remaining > 0) {
+              setTimeRemaining(remaining);
+              setIsDeadlinePassed(false);
+              countdownRef.current = { timeRemaining: remaining, isDeadlinePassed: false };
+            } else {
+              setTimeRemaining(null);
+              setIsDeadlinePassed(true);
+              countdownRef.current = { timeRemaining: null, isDeadlinePassed: true };
+            }
+          }
         } else {
           setError(res.error || 'Không thể tải quiz');
         }
@@ -88,9 +106,15 @@ const QuizPlayer = ({
     return `${hours}h ${minutes}m ${secs}s`;
   };
 
-  // NEW: Countdown timer effect
+  // NEW: Countdown timer effect - avoid flash by preserving state
   useEffect(() => {
-    if (!quiz?.due_at) return; // No deadline
+    if (!quiz?.due_at) {
+      // No deadline - reset countdown state
+      setTimeRemaining(null);
+      setIsDeadlinePassed(false);
+      countdownRef.current = { timeRemaining: null, isDeadlinePassed: false };
+      return;
+    }
 
     const updateCountdown = () => {
       const now = new Date();
@@ -98,14 +122,23 @@ const QuizPlayer = ({
       const remaining = deadline.getTime() - now.getTime();
 
       if (remaining <= 0) {
-        setTimeRemaining(null);
-        setIsDeadlinePassed(true);
+        // Only update state if changed to avoid re-renders
+        if (countdownRef.current.isDeadlinePassed !== true) {
+          setTimeRemaining(null);
+          setIsDeadlinePassed(true);
+          countdownRef.current = { timeRemaining: null, isDeadlinePassed: true };
+        }
       } else {
-        setTimeRemaining(remaining);
-        setIsDeadlinePassed(false);
+        // Only update state if changed significantly (> 1s) to avoid flash
+        if (countdownRef.current.timeRemaining !== remaining) {
+          setTimeRemaining(remaining);
+          setIsDeadlinePassed(false);
+          countdownRef.current = { timeRemaining: remaining, isDeadlinePassed: false };
+        }
       }
     };
 
+    // Initial update
     updateCountdown();
     const interval = setInterval(updateCountdown, 1000);
 
