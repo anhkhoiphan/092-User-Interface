@@ -50,7 +50,7 @@ const QuizPlayer = ({
           if (remaining > 0) {
             setTimeRemaining(remaining);
             setIsDeadlinePassed(false);
-            countdownRef.current = { timeRemaining, isDeadlinePassed: false };
+            countdownRef.current = { timeRemaining: remaining, isDeadlinePassed: false };
           } else {
             setTimeRemaining(null);
             setIsDeadlinePassed(true);
