@@ -19,6 +19,7 @@ function normalizeRoomMessage(msg) {
     created_at: msg.created_at,
     is_pinned: msg.is_pinned || false,
     reply_to_id: msg.reply_to_id || null,
+    attachments: msg.attachments || [],
   };
 }
 

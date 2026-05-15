@@ -1035,12 +1035,9 @@ function ChatArea({
         }
 
         // Send via WebSocket (with real URL if upload succeeded)
+        // Backend will detect @StudyBot mention and call agent with the file URL automatically
         console.log("[ChatArea] sendMessage:", { roomId: room, content: contentTrimmed, tempId: msgTempId, hasAttachment: !!attachment });
         socketService.sendMessage({ roomId: room, content: contentTrimmed, tempId: msgTempId, attachment });
-
-        if (files?.length > 0 && /@StudyBot/i.test(contentTrimmed)) {
-          callStudyBotWithFile(contentTrimmed, files[0], null);
-        }
 
         // Stop typing
         socketService.emitStopTyping(room);
