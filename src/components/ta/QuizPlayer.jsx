@@ -23,6 +23,8 @@ const QuizPlayer = ({
   const [isDeadlinePassed, setIsDeadlinePassed] = useState(false);
   // Use ref to persist countdown across re-renders and avoid flash on reload
   const countdownRef = useRef({ timeRemaining: null, isDeadlinePassed: false });
+  // Cache quiz data to avoid re-fetch on modal open/close
+  const cacheRef = useRef({});
 
   const isModal = displayMode === 'modal';
   const shouldRender = !isModal || isOpen;
@@ -34,46 +36,73 @@ const QuizPlayer = ({
     const fetchQuiz = async () => {
       setLoading(true);
       setError('');
-      setQuiz(null);
-      setQuestions([]);
-      setCurrentQuestion(0);
-      setAnswers({});
-      setSubmitted(false);
-      setResult(null);
 
-      try {
-        const res = await taService.getQuizForStudent(quizId);
-        if (cancelled) return;
-
-        if (res.success) {
-          const quizData = res.data.quiz;
-          setQuiz(quizData);
-          setQuestions((res.data.questions || []).map(normalizeQuestion));
-          // Preserve countdown state to avoid flash on reload
-          if (quizData?.due_at) {
-            const now = new Date();
-            const deadline = new Date(quizData.due_at);
-            const remaining = deadline.getTime() - now.getTime();
-            if (remaining > 0) {
-              setTimeRemaining(remaining);
-              setIsDeadlinePassed(false);
-              countdownRef.current = { timeRemaining: remaining, isDeadlinePassed: false };
-            } else {
-              setTimeRemaining(null);
-              setIsDeadlinePassed(true);
-              countdownRef.current = { timeRemaining: null, isDeadlinePassed: true };
-            }
+      // Check cache first to avoid re-render
+      if (cacheRef.current[quizId] && !error) {
+        const cached = cacheRef.current[quizId];
+        setQuiz(cached.quiz);
+        setQuestions(cached.questions);
+        // Initialize countdown from cached due_at
+        if (cached.quiz?.due_at) {
+          const now = new Date();
+          const deadline = new Date(cached.quiz.due_at);
+          const remaining = deadline.getTime() - now.getTime();
+          if (remaining > 0) {
+            setTimeRemaining(remaining);
+            setIsDeadlinePassed(false);
+            countdownRef.current = { timeRemaining, isDeadlinePassed: false };
+          } else {
+            setTimeRemaining(null);
+            setIsDeadlinePassed(true);
+            countdownRef.current = { timeRemaining: null, isDeadlinePassed: true };
           }
-        } else {
-          setError(res.error || 'Không thể tải quiz');
         }
-      } catch (fetchError) {
-        if (!cancelled) {
-          console.error('Failed to fetch quiz:', fetchError);
-          setError(fetchError.response?.data?.message || 'Có lỗi xảy ra khi tải quiz');
+        setLoading(false);
+      } else {
+        // Fetch from API
+        setQuiz(null);
+        setQuestions([]);
+        setCurrentQuestion(0);
+        setAnswers({});
+        setSubmitted(false);
+        setResult(null);
+
+        try {
+          const res = await taService.getQuizForStudent(quizId);
+          if (cancelled) return;
+
+          if (res.success) {
+            const quizData = res.data.quiz;
+            setQuiz(quizData);
+            setQuestions((res.data.questions || []).map(normalizeQuestion));
+            // Cache the data
+            cacheRef.current[quizId] = { quiz: quizData, questions: (res.data.questions || []).map(normalizeQuestion) };
+            // Initialize countdown
+            if (quizData?.due_at) {
+              const now = new Date();
+              const deadline = new Date(quizData.due_at);
+              const remaining = deadline.getTime() - now.getTime();
+              if (remaining > 0) {
+                setTimeRemaining(remaining);
+                setIsDeadlinePassed(false);
+                countdownRef.current = { timeRemaining: remaining, isDeadlinePassed: false };
+              } else {
+                setTimeRemaining(null);
+                setIsDeadlinePassed(true);
+                countdownRef.current = { timeRemaining: null, isDeadlinePassed: true };
+              }
+            }
+          } else {
+            setError(res.error || 'Không thể tải quiz');
+          }
+        } catch (fetchError) {
+          if (!cancelled) {
+            console.error('Failed to fetch quiz:', fetchError);
+            setError(fetchError.response?.data?.message || 'Có lỗi xảy ra khi tải quiz');
+          }
+        } finally {
+          if (!cancelled) setLoading(false);
         }
-      } finally {
-        if (!cancelled) setLoading(false);
       }
     };
 
@@ -122,25 +151,28 @@ const QuizPlayer = ({
       const remaining = deadline.getTime() - now.getTime();
 
       if (remaining <= 0) {
-        // Only update state if changed to avoid re-renders
+        // Deadline passed - block all interactions
         if (countdownRef.current.isDeadlinePassed !== true) {
           setTimeRemaining(null);
           setIsDeadlinePassed(true);
           countdownRef.current = { timeRemaining: null, isDeadlinePassed: true };
+          setError('Đã quá hạn nộp bài. Bạn không thể nộp quiz này nữa.');
         }
       } else {
-        // Only update state if changed significantly (> 1s) to avoid flash
-        if (countdownRef.current.timeRemaining !== remaining) {
-          setTimeRemaining(remaining);
+        // Round to nearest minute to reduce re-renders - only update when minute changes
+        const roundedRemaining = Math.floor(remaining / 60000) * 60000;
+        if (countdownRef.current.timeRemaining !== roundedRemaining) {
+          setTimeRemaining(roundedRemaining);
           setIsDeadlinePassed(false);
-          countdownRef.current = { timeRemaining: remaining, isDeadlinePassed: false };
+          countdownRef.current = { timeRemaining: roundedRemaining, isDeadlinePassed: false };
         }
       }
     };
 
     // Initial update
     updateCountdown();
-    const interval = setInterval(updateCountdown, 1000);
+    // Update every 5 seconds to catch deadline passing during attempt
+    const interval = setInterval(updateCountdown, 5000);
 
     return () => clearInterval(interval);
   }, [quiz?.due_at]);
@@ -398,6 +430,7 @@ const QuizPlayer = ({
           <div style={{
             padding: '12px 16px',
             background: isDeadlinePassed ? 'var(--ta-red-bg)' :
+                        timeRemaining < 300000 ? 'var(--ta-red-bg)' : // < 5 minutes
                         timeRemaining < 3600000 ? 'var(--ta-red-bg)' : // < 1 hour
                         timeRemaining < 86400000 ? 'var(--ta-amber-bg)' : // < 1 day
                         'var(--bg-surface-tertiary)',
@@ -413,7 +446,12 @@ const QuizPlayer = ({
             {isDeadlinePassed ? (
               <>⏰ Đã quá hạn nộp bài</>
             ) : (
-              <>⏱️ Thời gian còn lại: {formatTimeRemaining(timeRemaining)}</>
+              <>
+                ⏱️ Thời gian còn lại: {formatTimeRemaining(timeRemaining)}
+                {timeRemaining < 300000 && (
+                  <span style={{ marginLeft: '8px', fontWeight: 700 }}>⚠️ Cảnh báo: Còn ít hơn {Math.ceil(timeRemaining / 60000)} phút!</span>
+                )}
+              </>
             )}
           </div>
         )}

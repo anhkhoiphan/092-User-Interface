@@ -621,6 +621,27 @@ ${compileRules(g.rules)}
     }
   };
 
+  const handleRecallQuiz = async (quizId) => {
+    if (!confirm('Bạn có chắc muốn thu hồi quiz này? Học viên sẽ không thể làm quiz nữa.')) return;
+    try {
+      await taService.updateQuiz(quizId, { status: 'draft' });
+      addToast('Đã thu hồi quiz!');
+      fetchData();
+    } catch (error) {
+      addToast('Không thể thu hồi quiz', 'error');
+    }
+  };
+
+  const handleRestoreQuiz = async (quizId) => {
+    try {
+      await taService.updateQuiz(quizId, { status: 'draft' });
+      addToast('Đã khôi phục quiz!');
+      fetchData();
+    } catch (error) {
+      addToast('Không thể khôi phục quiz', 'error');
+    }
+  };
+
   const visibleQuizList = selectedSpaces.length > 0
     ? quizList.filter(quiz => selectedSpaces.includes(quiz.space_id))
     : quizList;
@@ -971,7 +992,25 @@ ${compileRules(g.rules)}
                               </div>
                             </div>
                             <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                              {!isPublished ? (
+                              {quiz.status === 'published' ? (
+                                <>
+                                  <button
+                                    className="ta-btn"
+                                    style={{ padding: '8px 12px', fontSize: '12px', minWidth: '80px', color: 'var(--ta-amber)' }}
+                                    onClick={() => handleRecallQuiz(quiz.id)}
+                                    title="Thu hồi quiz - Học viên không thể làm nữa"
+                                  >
+                                    <FiUndo /> Thu hồi
+                                  </button>
+                                  <button
+                                    className="vibrant-btn"
+                                    style={{ padding: '8px 12px', fontSize: '12px' }}
+                                    onClick={() => handleViewResults(quiz.id)}
+                                  >
+                                    <FiBarChart2 /> Kết quả
+                                  </button>
+                                </>
+                              ) : quiz.status === 'draft' ? (
                                 <>
                                   <button
                                     className="vibrant-btn"
@@ -990,18 +1029,34 @@ ${compileRules(g.rules)}
                                   <button className="ta-btn" onClick={() => handleEditQuiz(quiz.id)} title="Sửa quiz">
                                     <FiEdit3 />
                                   </button>
-                                  <button className="ta-btn" onClick={() => handleDeleteQuizFromList(quiz.id)} title="Xóa quiz" style={{ color: 'var(--ta-red)' }}>
-                                    <FiTrash2 />
+                                  <button
+                                    className="ta-btn"
+                                    onClick={() => handleDeleteQuizFromList(quiz.id)}
+                                    title="Lưu trữ quiz"
+                                    style={{ color: 'var(--ta-red)' }}
+                                  >
+                                    <FiArchive />
                                   </button>
                                 </>
                               ) : (
-                                <button
-                                  className="vibrant-btn"
-                                  style={{ padding: '8px 12px', fontSize: '12px' }}
-                                  onClick={() => handleViewResults(quiz.id)}
-                                >
-                                  <FiBarChart2 /> Xem kết quả
-                                </button>
+                                // archived status
+                                <>
+                                  <button
+                                    className="ta-btn"
+                                    style={{ padding: '8px 12px', fontSize: '12px', minWidth: '80px', color: 'var(--ta-green)' }}
+                                    onClick={() => handleRestoreQuiz(quiz.id)}
+                                    title="Khôi phục quiz về draft"
+                                  >
+                                    <FiRotateCcw /> Khôi phục
+                                  </button>
+                                  <button
+                                    className="ta-btn"
+                                    onClick={() => handleEditQuiz(quiz.id)}
+                                    title="Xem chi tiết"
+                                  >
+                                    <FiEye />
+                                  </button>
+                                </>
                               )}
                             </div>
                           </div>
