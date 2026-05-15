@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
-import { 
-  FiAlertCircle, FiRefreshCw, FiFileText, FiActivity, FiSettings, 
-  FiTrendingUp, FiSend, FiBarChart2, FiCpu, FiClock, FiTrash2, 
-  FiLayers, FiFilter, FiEdit3, FiMessageSquare, FiUser, FiCheckCircle, FiCheck, FiX, FiChevronRight, FiCheckSquare, FiZap, FiRotateCcw, FiSave, FiChevronDown, FiGlobe, FiSmile, FiBriefcase, FiList, FiStar
+import {
+  FiAlertCircle, FiRefreshCw, FiFileText, FiActivity, FiSettings,
+  FiTrendingUp, FiSend, FiBarChart2, FiCpu, FiClock, FiTrash2,
+  FiLayers, FiFilter, FiEdit3, FiMessageSquare, FiUser, FiCheckCircle, FiCheck, FiX, FiChevronRight, FiCheckSquare, FiZap, FiRotateCcw, FiSave, FiChevronDown, FiGlobe, FiSmile, FiBriefcase, FiList, FiStar, FiUndo, FiRotateCcw, FiArchive, FiEye
 } from 'react-icons/fi';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
