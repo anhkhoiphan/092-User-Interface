@@ -41,9 +41,8 @@ export const messageService = {
     const formData = new FormData();
     formData.append("file", file);
     if (options.roomId) formData.append("roomId", options.roomId);
-    return api.post("/files", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
+    // Don't set Content-Type manually — let axios set it with the correct boundary for multipart
+    return api.post("/files", formData);
   },
 
   // Pin a message

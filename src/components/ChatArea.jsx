@@ -706,6 +706,7 @@ function ChatArea({
   // Handle send message via WebSocket
   const handleSend = useCallback(
     async (content, replyToMsg, files) => {
+      console.log("[ChatArea] handleSend called:", { content: content.slice(0, 50), filesLen: files?.length, isDM, isSpaceRoom, room });
       if (!content.trim() && !files?.length) return;
 
       if (isDM) {
@@ -1016,8 +1017,10 @@ function ChatArea({
         if (files?.length > 0) {
           try {
             const fileObj = files[0];
+            console.log("[ChatArea] Uploading file:", fileObj.name, fileObj.file?.type, fileObj.file?.size);
             const uploadRes = await messageService.uploadFileToStorage(fileObj.file, { roomId: room });
             const fileData = uploadRes.data?.data || uploadRes.data;
+            console.log("[ChatArea] Upload success, fileData:", fileData);
             attachment = {
               file_url: fileData.fileUrl || fileData.file_url,
               file_name: fileData.fileName || fileData.file_name || fileObj.name,
@@ -1025,12 +1028,14 @@ function ChatArea({
               file_size: fileData.fileSize || fileData.file_size,
               mime_type: fileData.mimeType || fileData.mime_type,
             };
+            console.log("[ChatArea] attachment to send:", attachment);
           } catch (err) {
-            console.error("[ChatArea] File upload failed:", err);
+            console.error("[ChatArea] File upload failed:", err?.response?.data || err?.message || err);
           }
         }
 
         // Send via WebSocket (with real URL if upload succeeded)
+        console.log("[ChatArea] sendMessage:", { roomId: room, content: contentTrimmed, tempId: msgTempId, hasAttachment: !!attachment });
         socketService.sendMessage({ roomId: room, content: contentTrimmed, tempId: msgTempId, attachment });
 
         if (files?.length > 0 && /@StudyBot/i.test(contentTrimmed)) {
