@@ -67,14 +67,22 @@ const QuizPlayer = ({ quizId, onComplete, isOpen = true, onClose = () => {}, dis
             questions
           }));
         } else {
-          setState(prev => ({ ...prev, loading: false, error: res.error || 'Không thể tải quiz' }));
+          setState(prev => ({
+            ...prev,
+            loading: false,
+            error: res.error || 'Không thể tải quiz',
+            isDeadlinePassed: false,
+            timeRemaining: null
+          }));
         }
       } catch (err) {
         if (!cancelled) {
           setState(prev => ({
             ...prev,
             loading: false,
-            error: err.response?.data?.message || err.message || 'Có lỗi xảy ra'
+            error: err.response?.data?.message || err.message || 'Có lỗi xảy ra',
+            isDeadlinePassed: false,
+            timeRemaining: null
           }));
         }
       }
