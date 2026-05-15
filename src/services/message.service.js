@@ -36,6 +36,16 @@ export const messageService = {
     });
   },
 
+  // Upload file to storage and get back URL (POST /files)
+  uploadFileToStorage: (file, options = {}) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (options.roomId) formData.append("roomId", options.roomId);
+    return api.post("/files", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+
   // Pin a message
   pinMessage: (roomId, messageId) =>
     api.post(`/rooms/${roomId}/messages/${messageId}/pin`),

@@ -28,6 +28,7 @@ import {
   clearRoomUnreadCount,
 } from "../store/slices/spaceSlice";
 import socketService from "../services/socket.service";
+import { messageService } from "../services/message.service";
 
 function ChatArea({
   activeView,
@@ -507,6 +508,18 @@ function ChatArea({
       });
     })();
 
+    const rawAttachments = msg.attachments || [];
+    const normalizedAttachments = rawAttachments.map((att) => ({
+      name: att.file_name || att.name || "file",
+      type: (att.file_type || att.type || "").includes("image")
+        ? "image"
+        : (att.file_name || att.name || "").toLowerCase().endsWith(".pdf") ||
+          (att.file_type || att.type || "").includes("pdf")
+        ? "pdf"
+        : "other",
+      url: att.file_url || att.url || att.previewUrl || "",
+    }));
+
     return {
       id: msg.id,
       sender: senderName,
@@ -522,6 +535,8 @@ function ChatArea({
       pending: msg.pending || false,
       is_read: msg.is_read,
       created_at: msg.created_at,
+      hasAttachment: normalizedAttachments.length > 0,
+      attachments: normalizedAttachments,
     };
   });
 
@@ -942,6 +957,41 @@ function ChatArea({
         const msgTempId = `temp-${Date.now()}`;
         const contentTrimmed = content.trim();
 
+        // Upload file first if present
+        let attachment = null;
+        let optimisticAttachments = [];
+        if (files?.length > 0) {
+          const fileObj = files[0];
+          // Show preview immediately in optimistic message
+          if (fileObj.preview || fileObj.file) {
+            const previewUrl = fileObj.preview || URL.createObjectURL(fileObj.file);
+            const isPdf =
+              fileObj.file?.type === "application/pdf" ||
+              (fileObj.name || "").toLowerCase().endsWith(".pdf");
+            optimisticAttachments = [{
+              file_name: fileObj.name || fileObj.file?.name || "file",
+              file_type: fileObj.file?.type || "",
+              file_url: previewUrl,
+              previewUrl,
+            }];
+          }
+          try {
+            const uploadRes = await messageService.uploadFileToStorage(fileObj.file, { roomId: room });
+            const fileData = uploadRes.data?.data || uploadRes.data;
+            attachment = {
+              file_url: fileData.fileUrl || fileData.file_url,
+              file_name: fileData.fileName || fileData.file_name || fileObj.name,
+              file_type: fileData.fileType || fileData.file_type,
+              file_size: fileData.fileSize || fileData.file_size,
+              mime_type: fileData.mimeType || fileData.mime_type,
+            };
+            // Update optimistic preview with real URL
+            optimisticAttachments = [{ ...attachment }];
+          } catch (err) {
+            console.error("[ChatArea] File upload failed:", err);
+          }
+        }
+
         // Optimistic UI - same format as DM
         const optimisticMsg = {
           id: msgTempId,
@@ -955,6 +1005,7 @@ function ChatArea({
           created_at: new Date().toISOString(),
           is_read: false,
           pending: true,
+          attachments: optimisticAttachments,
         };
 
         // Track sending message
@@ -980,9 +1031,9 @@ function ChatArea({
         }, 10000);
 
         dispatch(addMessage({ roomId: room, message: optimisticMsg }));
-        
-        // Send with tempId so BE can echo it back
-        socketService.sendMessage({ roomId: room, content: contentTrimmed, tempId: msgTempId });
+
+        // Send with tempId (and attachment if uploaded) so BE can echo it back
+        socketService.sendMessage({ roomId: room, content: contentTrimmed, tempId: msgTempId, attachment });
 
         if (files?.length > 0 && /@StudyBot/i.test(contentTrimmed)) {
           callStudyBotWithFile(contentTrimmed, files[0], null);
