@@ -18,12 +18,10 @@ const QuizPlayer = ({
   const [submitted, setSubmitted] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
-  // NEW: Countdown timer state
-  const [timeRemaining, setTimeRemaining] = useState(null);
-  const [isDeadlinePassed, setIsDeadlinePassed] = useState(false);
-  // Use ref to persist countdown across re-renders and avoid flash on reload
+  // Countdown state - only update display every 5 seconds to avoid re-render
+  const [displayTimeRemaining, setDisplayTimeRemaining] = useState(null);
+  const [displayIsDeadlinePassed, setDisplayIsDeadlinePassed] = useState(false);
   const countdownRef = useRef({ timeRemaining: null, isDeadlinePassed: false });
-  // Cache quiz data to avoid re-fetch on modal open/close
   const cacheRef = useRef({});
 
   const isModal = displayMode === 'modal';
@@ -49,12 +47,12 @@ const QuizPlayer = ({
           // Add 1 second buffer for potential clock skew between client and server
           const remaining = deadline.getTime() - now.getTime() - 1000;
           if (remaining > 0) {
-            setTimeRemaining(remaining);
-            setIsDeadlinePassed(false);
+            setDisplayTimeRemaining(remaining);
+            setDisplayIsDeadlinePassed(false);
             countdownRef.current = { timeRemaining: remaining, isDeadlinePassed: false };
           } else {
-            setTimeRemaining(null);
-            setIsDeadlinePassed(true);
+            setDisplayTimeRemaining(null);
+            setDisplayIsDeadlinePassed(true);
             countdownRef.current = { timeRemaining: null, isDeadlinePassed: true };
           }
         }
@@ -137,43 +135,39 @@ const QuizPlayer = ({
     return `${hours}h ${minutes}m ${secs}s`;
   };
 
-  // NEW: Countdown timer effect - avoid flash by preserving state
+  // NEW: Countdown timer effect - only update display every 5 seconds to avoid re-renders
   useEffect(() => {
     if (!quiz?.due_at) {
       // No deadline - reset countdown state
-      setTimeRemaining(null);
-      setIsDeadlinePassed(false);
       countdownRef.current = { timeRemaining: null, isDeadlinePassed: false };
+      setDisplayTimeRemaining(null);
+      setDisplayIsDeadlinePassed(false);
       return;
     }
 
     const updateCountdown = () => {
       const now = new Date();
       const deadline = new Date(quiz.due_at);
-      const remaining = deadline.getTime() - now.getTime();
+      const remaining = deadline.getTime() - now.getTime() - 1000; // 1 second buffer for clock skew
 
       if (remaining <= 0) {
         // Deadline passed - block all interactions
         if (countdownRef.current.isDeadlinePassed !== true) {
-          setTimeRemaining(null);
-          setIsDeadlinePassed(true);
           countdownRef.current = { timeRemaining: null, isDeadlinePassed: true };
+          setDisplayIsDeadlinePassed(true);
           setError('Đã quá hạn nộp bài. Bạn không thể nộp quiz này nữa.');
         }
       } else {
-        // Round to nearest second to reduce re-renders - update every second for smooth countdown
-      const roundedRemaining = Math.floor(remaining / 1000) * 1000;
-        if (countdownRef.current.timeRemaining !== roundedRemaining) {
-          setTimeRemaining(roundedRemaining);
-          setIsDeadlinePassed(false);
-          countdownRef.current = { timeRemaining: roundedRemaining, isDeadlinePassed: false };
-        }
+        // Update display state - this triggers re-render but only every 5 seconds (interval)
+        countdownRef.current = { timeRemaining: remaining, isDeadlinePassed: false };
+        setDisplayTimeRemaining(remaining);
+        setDisplayIsDeadlinePassed(false);
       }
     };
 
     // Initial update
     updateCountdown();
-    // Update every 5 seconds to catch deadline passing during attempt
+    // Update every 5 seconds
     const interval = setInterval(updateCountdown, 5000);
 
     return () => clearInterval(interval);
@@ -201,8 +195,8 @@ const QuizPlayer = ({
 
   const handleSelectAnswer = (optionId) => {
     if (!currentQ) return;
-    // NEW: Block answer selection if deadline passed
-    if (isDeadlinePassed) return;
+    // NEW: Block answer selection if deadline passed (check ref for real-time status)
+    if (countdownRef.current.isDeadlinePassed) return;
     setAnswers((prev) => ({
       ...prev,
       [currentQ.id]: optionId
@@ -219,8 +213,8 @@ const QuizPlayer = ({
 
   const handleSubmit = async () => {
     if (!questions.length || submitting) return;
-    // NEW: Block submit if deadline passed
-    if (isDeadlinePassed) {
+    // NEW: Block submit if deadline passed (check ref for real-time status)
+    if (countdownRef.current.isDeadlinePassed) {
       setError('Đã quá hạn nộp bài');
       return;
     }
@@ -247,7 +241,7 @@ const QuizPlayer = ({
 
       // Handle deadline-specific error (race condition protection)
       if (errorMessage?.includes('quá hạn') || submitError.response?.status === 403) {
-        setIsDeadlinePassed(true);
+        setDisplayIsDeadlinePassed(true);
         countdownRef.current = { timeRemaining: null, isDeadlinePassed: true };
         setError('Đã quá hạn nộp bài.');
       } else {
@@ -311,8 +305,8 @@ const QuizPlayer = ({
         {quiz?.due_at && !submitted && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' }}>
             <span className="ta-badge" style={{
-              backgroundColor: isDeadlinePassed ? 'var(--ta-red-bg)' : 'var(--ta-purple-bg)',
-              color: isDeadlinePassed ? 'var(--ta-red)' : 'var(--ta-purple)',
+              backgroundColor: countdownRef.current.isDeadlinePassed ? 'var(--ta-red-bg)' : 'var(--ta-purple-bg)',
+              color: countdownRef.current.isDeadlinePassed ? 'var(--ta-red)' : 'var(--ta-purple)',
               fontSize: '10px',
               padding: '2px 6px',
               display: 'inline-flex',
@@ -320,7 +314,7 @@ const QuizPlayer = ({
               gap: '4px'
             }}>
               <Icons.FiClock size={10} />
-              {isDeadlinePassed ? 'Đã quá hạn' : `Nộp trước: ${new Date(quiz.due_at).toLocaleString('vi-VN')}`}
+              {countdownRef.current.isDeadlinePassed ? 'Đã quá hạn' : `Nộp trước: ${new Date(quiz.due_at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`}
             </span>
           </div>
         )}
@@ -441,13 +435,13 @@ const QuizPlayer = ({
         {quiz?.due_at && !submitted && (
           <div style={{
             padding: '12px 16px',
-            background: isDeadlinePassed ? 'var(--ta-red-bg)' :
-                        timeRemaining < 300000 ? 'var(--ta-red-bg)' : // < 5 minutes
-                        timeRemaining < 3600000 ? 'var(--ta-red-bg)' : // < 1 hour
-                        timeRemaining < 86400000 ? 'var(--ta-amber-bg)' : // < 1 day
+            background: displayIsDeadlinePassed ? 'var(--ta-red-bg)' :
+                        displayTimeRemaining < 300000 ? 'var(--ta-red-bg)' : // < 5 minutes
+                        displayTimeRemaining < 3600000 ? 'var(--ta-red-bg)' : // < 1 hour
+                        displayTimeRemaining < 86400000 ? 'var(--ta-amber-bg)' : // < 1 day
                         'var(--bg-surface-tertiary)',
-            color: isDeadlinePassed ? 'var(--ta-red)' :
-                   timeRemaining < 3600000 ? 'var(--ta-red)' :
+            color: displayIsDeadlinePassed ? 'var(--ta-red)' :
+                   displayTimeRemaining < 3600000 ? 'var(--ta-red)' :
                    'var(--ta-amber)',
             borderRadius: '8px',
             marginBottom: '20px',
@@ -455,13 +449,13 @@ const QuizPlayer = ({
             fontWeight: 600,
             fontSize: '14px'
           }}>
-            {isDeadlinePassed ? (
+            {displayIsDeadlinePassed ? (
               <>⏰ Đã quá hạn nộp bài</>
             ) : (
               <>
-                ⏱️ Thời gian còn lại: {formatTimeRemaining(timeRemaining)}
-                {timeRemaining < 300000 && (
-                  <span style={{ marginLeft: '8px', fontWeight: 700 }}>⚠️ Cảnh báo: Còn ít hơn {Math.ceil(timeRemaining / 60000)} phút!</span>
+                ⏱️ Thời gian còn lại: {formatTimeRemaining(displayTimeRemaining)}
+                {displayTimeRemaining < 300000 && (
+                  <span style={{ marginLeft: '8px', fontWeight: 700 }}>⚠️ Cảnh báo: Còn ít hơn {Math.ceil(displayTimeRemaining / 60000)} phút!</span>
                 )}
               </>
             )}
@@ -543,17 +537,17 @@ const QuizPlayer = ({
 
           <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
             Đã trả lời {answeredCount}/{questions.length}
-            {isDeadlinePassed && <span style={{ color: 'var(--ta-red)', fontWeight: 600, marginLeft: '8px' }}>⏰ Đã quá hạn</span>}
+            {countdownRef.current.isDeadlinePassed && <span style={{ color: 'var(--ta-red)', fontWeight: 600, marginLeft: '8px' }}>⏰ Đã quá hạn</span>}
           </span>
 
           {currentQuestion === questions.length - 1 ? (
             <button
-              className={hasAnsweredCurrent && !isDeadlinePassed ? 'vibrant-btn' : 'ta-btn'}
+              className={hasAnsweredCurrent && !countdownRef.current.isDeadlinePassed ? 'vibrant-btn' : 'ta-btn'}
               onClick={handleSubmit}
-              disabled={!hasAnsweredCurrent || submitting || isDeadlinePassed}
+              disabled={!hasAnsweredCurrent || submitting || countdownRef.current.isDeadlinePassed}
               style={{ padding: '12px 24px' }}
             >
-              {submitting ? <Icons.FiRefreshCw className="spin" /> : isDeadlinePassed ? 'Đã quá hạn' : <><Icons.FiCheckSquare /> Hoàn thành</>}
+              {submitting ? <Icons.FiRefreshCw className="spin" /> : countdownRef.current.isDeadlinePassed ? 'Đã quá hạn' : <><Icons.FiCheckSquare /> Hoàn thành</>}
             </button>
           ) : (
             <button
