@@ -853,7 +853,7 @@ ${compileRules(g.rules)}
                         let resAgent;
                         if (uploadedFile && uploadedFile.rawFile) {
                           console.log('[Recap] Calling agent WITH file:', uploadedFile.rawFile.name, uploadedFile.rawFile.size, 'bytes');
-                          resAgent = await taService.callAgentWithFile(selectedSpaces[0], prompt, user?.id || 'TA', uploadedFile.rawFile);
+                          resAgent = await taService.callAgentWithFile(selectedSpaces[0], prompt, uploadedFile.rawFile);
                         } else {
                           console.log('[Recap] Calling agent WITHOUT file');
                           resAgent = await taService.callAgentChat(selectedSpaces[0], prompt, user?.id || 'TA');
@@ -897,7 +897,7 @@ ${compileRules(g.rules)}
                     let resAgent;
                     if (uploadedFile && uploadedFile.rawFile) {
                       console.log('[Recap] Calling agent WITH file:', uploadedFile.rawFile.name, uploadedFile.rawFile.size, 'bytes');
-                      resAgent = await taService.callAgentWithFile(selectedSpaces[0], prompt, user?.id || 'TA', uploadedFile.rawFile);
+                      resAgent = await taService.callAgentWithFile(selectedSpaces[0], prompt, uploadedFile.rawFile);
                     } else {
                       console.log('[Recap] Calling agent WITHOUT file');
                       resAgent = await taService.callAgentChat(selectedSpaces[0], prompt, user?.id || 'TA');
