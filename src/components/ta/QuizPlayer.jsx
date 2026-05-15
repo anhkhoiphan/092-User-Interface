@@ -252,17 +252,17 @@ const QuizPlayer = ({
         background: 'rgba(0, 0, 0, 0.5)',
         zIndex: 9999,
         display: 'flex',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         justifyContent: 'center',
-        padding: '20px'
+        padding: '20px',
+        overflowY: 'auto'
       }}>
         <div style={{
           background: 'var(--bg-primary)',
           borderRadius: '12px 12px 0 0',
-          maxWidth: '100%',
-          maxHeight: '100vh',
           width: '100%',
-          height: '100vh',
+          maxWidth: '900px',
+          minHeight: '100vh',
           display: 'flex',
           flexDirection: 'column'
         }}>

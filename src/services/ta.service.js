@@ -138,7 +138,7 @@ const taService = {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
-        timeout: 60000
+        timeout: 180000
       });
       console.log('[TA Service] callAgentWithFile success:', response.data);
       return response.data;
