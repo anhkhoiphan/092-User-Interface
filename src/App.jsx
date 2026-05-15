@@ -250,7 +250,7 @@ function App() {
       const id = data.id;
       const tempId = data.tempId;
 
-      if (!roomId || !content) return;
+      if (!roomId || (!content && !data.attachments?.length)) return;
 
       console.log("[App] newMessage parsed:", { roomId, id, tempId, author, senderId });
 
@@ -276,6 +276,7 @@ function App() {
             isPinned: data.is_pinned || false,
             isOwn: isOwnMessage,
             tempId,
+            attachments: data.attachments || [],
           },
         }),
       );

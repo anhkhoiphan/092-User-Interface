@@ -36,6 +36,15 @@ export const messageService = {
     });
   },
 
+  // Upload file to storage and get back URL (POST /files)
+  uploadFileToStorage: (file, options = {}) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (options.roomId) formData.append("roomId", options.roomId);
+    // Don't set Content-Type manually — let axios set it with the correct boundary for multipart
+    return api.post("/files", formData);
+  },
+
   // Pin a message
   pinMessage: (roomId, messageId) =>
     api.post(`/rooms/${roomId}/messages/${messageId}/pin`),

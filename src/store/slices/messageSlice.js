@@ -19,6 +19,7 @@ function normalizeRoomMessage(msg) {
     created_at: msg.created_at,
     is_pinned: msg.is_pinned || false,
     reply_to_id: msg.reply_to_id || null,
+    attachments: msg.attachments || [],
   };
 }
 
@@ -122,7 +123,11 @@ const messageSlice = createSlice({
         if (exists) {
           messages.splice(pendingIndex, 1);
         } else {
-          messages[pendingIndex] = { ...message, pending: false, failed: false };
+          // Preserve attachments from pending message if server message has none
+          const pendingAttachments = messages[pendingIndex].attachments || [];
+          const serverAttachments = message.attachments || [];
+          const mergedAttachments = serverAttachments.length > 0 ? serverAttachments : pendingAttachments;
+          messages[pendingIndex] = { ...message, pending: false, failed: false, attachments: mergedAttachments };
         }
         return;
       }
