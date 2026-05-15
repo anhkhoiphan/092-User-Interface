@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux';
 import {
   FiAlertCircle, FiRefreshCw, FiFileText, FiActivity, FiSettings,
   FiTrendingUp, FiSend, FiBarChart2, FiCpu, FiClock, FiTrash2,
-  FiLayers, FiFilter, FiEdit3, FiMessageSquare, FiUser, FiCheckCircle, FiCheck, FiX, FiChevronRight, FiCheckSquare, FiZap, FiRotateCcw, FiSave, FiChevronDown, FiGlobe, FiSmile, FiBriefcase, FiList, FiStar, FiUndo, FiArchive, FiEye
+  FiLayers, FiFilter, FiEdit3, FiMessageSquare, FiUser, FiCheckCircle, FiCheck, FiX, FiChevronRight, FiCheckSquare, FiZap, FiRotateCcw, FiSave, FiChevronDown, FiGlobe, FiSmile, FiBriefcase, FiList, FiStar, FiArchive, FiEye, FiArrowLeft
 } from 'react-icons/fi';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
@@ -1000,7 +1000,7 @@ ${compileRules(g.rules)}
                                     onClick={() => handleRecallQuiz(quiz.id)}
                                     title="Thu hồi quiz - Học viên không thể làm nữa"
                                   >
-                                    <FiUndo /> Thu hồi
+                                    <FiArrowLeft /> Thu hồi
                                   </button>
                                   <button
                                     className="vibrant-btn"
