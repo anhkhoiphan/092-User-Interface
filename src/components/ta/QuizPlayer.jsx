@@ -18,6 +18,9 @@ const QuizPlayer = ({
   const [submitted, setSubmitted] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
+  // NEW: Countdown timer state
+  const [timeRemaining, setTimeRemaining] = useState(null);
+  const [isDeadlinePassed, setIsDeadlinePassed] = useState(false);
 
   const isModal = displayMode === 'modal';
   const shouldRender = !isModal || isOpen;
@@ -71,6 +74,44 @@ const QuizPlayer = ({
     [answers, questions]
   );
 
+  // NEW: Format time remaining for display
+  const formatTimeRemaining = (ms) => {
+    const seconds = Math.floor(ms / 1000);
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+
+    if (hours > 24) {
+      const days = Math.floor(hours / 24);
+      return `${days}d ${hours % 24}h ${minutes}m`;
+    }
+    return `${hours}h ${minutes}m ${secs}s`;
+  };
+
+  // NEW: Countdown timer effect
+  useEffect(() => {
+    if (!quiz?.due_at) return; // No deadline
+
+    const updateCountdown = () => {
+      const now = new Date();
+      const deadline = new Date(quiz.due_at);
+      const remaining = deadline.getTime() - now.getTime();
+
+      if (remaining <= 0) {
+        setTimeRemaining(null);
+        setIsDeadlinePassed(true);
+      } else {
+        setTimeRemaining(remaining);
+        setIsDeadlinePassed(false);
+      }
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+
+    return () => clearInterval(interval);
+  }, [quiz?.due_at]);
+
   const normalizeOptions = (options) => {
     if (Array.isArray(options)) return options;
     if (typeof options === 'string') {
@@ -93,6 +134,8 @@ const QuizPlayer = ({
 
   const handleSelectAnswer = (optionId) => {
     if (!currentQ) return;
+    // NEW: Block answer selection if deadline passed
+    if (isDeadlinePassed) return;
     setAnswers((prev) => ({
       ...prev,
       [currentQ.id]: optionId
@@ -109,6 +152,11 @@ const QuizPlayer = ({
 
   const handleSubmit = async () => {
     if (!questions.length || submitting) return;
+    // NEW: Block submit if deadline passed
+    if (isDeadlinePassed) {
+      setError('Đã quá hạn nộp bài');
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -175,12 +223,29 @@ const QuizPlayer = ({
       borderBottom: isModal ? '1px solid var(--border-primary)' : 'none',
       background: isModal ? 'var(--bg-surface)' : 'transparent'
     }}>
-      <div>
+      <div style={{ flex: 1 }}>
         <h3 style={{ margin: 0, fontSize: '16px' }}>{title}</h3>
         {subtitle && (
           <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '12px' }}>
             {subtitle}
           </p>
+        )}
+        {/* NEW: Deadline badge in header */}
+        {quiz?.due_at && !submitted && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' }}>
+            <span className="ta-badge" style={{
+              backgroundColor: isDeadlinePassed ? 'var(--ta-red-bg)' : 'var(--ta-purple-bg)',
+              color: isDeadlinePassed ? 'var(--ta-red)' : 'var(--ta-purple)',
+              fontSize: '10px',
+              padding: '2px 6px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}>
+              <Icons.FiClock size={10} />
+              {isDeadlinePassed ? 'Đã quá hạn' : `Nộp trước: ${new Date(quiz.due_at).toLocaleString('vi-VN')}`}
+            </span>
+          </div>
         )}
       </div>
       {isModal && (
@@ -295,6 +360,31 @@ const QuizPlayer = ({
       <Header title={quiz.title || 'Quiz'} subtitle={`Câu ${currentQuestion + 1} / ${questions.length}`} />
 
       <div style={{ flex: 1, overflowY: 'auto', padding: isModal ? '24px' : '0' }}>
+        {/* NEW: Countdown timer display */}
+        {quiz?.due_at && !submitted && (
+          <div style={{
+            padding: '12px 16px',
+            background: isDeadlinePassed ? 'var(--ta-red-bg)' :
+                        timeRemaining < 3600000 ? 'var(--ta-red-bg)' : // < 1 hour
+                        timeRemaining < 86400000 ? 'var(--ta-amber-bg)' : // < 1 day
+                        'var(--bg-surface-tertiary)',
+            color: isDeadlinePassed ? 'var(--ta-red)' :
+                   timeRemaining < 3600000 ? 'var(--ta-red)' :
+                   'var(--ta-amber)',
+            borderRadius: '8px',
+            marginBottom: '20px',
+            textAlign: 'center',
+            fontWeight: 600,
+            fontSize: '14px'
+          }}>
+            {isDeadlinePassed ? (
+              <>⏰ Đã quá hạn nộp bài</>
+            ) : (
+              <>⏱️ Thời gian còn lại: {formatTimeRemaining(timeRemaining)}</>
+            )}
+          </div>
+        )}
+
         <div style={{ height: '8px', background: 'var(--bg-surface-tertiary)', borderRadius: '4px', overflow: 'hidden', marginBottom: '20px' }}>
           <div style={{ width: `${progress}%`, height: '100%', background: 'var(--primary)', transition: 'width 0.3s ease' }} />
         </div>
@@ -370,16 +460,17 @@ const QuizPlayer = ({
 
           <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
             Đã trả lời {answeredCount}/{questions.length}
+            {isDeadlinePassed && <span style={{ color: 'var(--ta-red)', fontWeight: 600, marginLeft: '8px' }}>⏰ Đã quá hạn</span>}
           </span>
 
           {currentQuestion === questions.length - 1 ? (
             <button
-              className={hasAnsweredCurrent ? 'vibrant-btn' : 'ta-btn'}
+              className={hasAnsweredCurrent && !isDeadlinePassed ? 'vibrant-btn' : 'ta-btn'}
               onClick={handleSubmit}
-              disabled={!hasAnsweredCurrent || submitting}
+              disabled={!hasAnsweredCurrent || submitting || isDeadlinePassed}
               style={{ padding: '12px 24px' }}
             >
-              {submitting ? <Icons.FiRefreshCw className="spin" /> : <><Icons.FiCheckSquare /> Hoàn thành</>}
+              {submitting ? <Icons.FiRefreshCw className="spin" /> : isDeadlinePassed ? 'Đã quá hạn' : <><Icons.FiCheckSquare /> Hoàn thành</>}
             </button>
           ) : (
             <button
