@@ -1,52 +1,124 @@
-import React, { useEffect, useState, useRef } from 'react';
-import * as Icons from 'react-icons/fi';
-import taService from '../../services/ta.service';
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import * as Icons from "react-icons/fi";
+import taService from "../../services/ta.service";
+import "./QuizPlayer.css";
 
-const QuizPlayer = ({ quizId, onComplete, isOpen = true, onClose = () => {}, displayMode = 'inline' }) => {
+const difficultyLabel = {
+  easy: "Dễ",
+  medium: "Trung bình",
+  hard: "Khó",
+};
+
+const optionLetters = ["A", "B", "C", "D", "E", "F"];
+
+const normalizeOptions = (options) => {
+  if (Array.isArray(options)) return options;
+  if (typeof options === "string") {
+    try {
+      const parsed = JSON.parse(options);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
+const formatDeadline = (value) => {
+  if (!value) return "Không giới hạn";
+  return new Date(value).toLocaleString("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    hour: "2-digit",
+    minute: "2-digit",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+};
+
+const formatRemaining = (ms) => {
+  if (!Number.isFinite(ms) || ms <= 0) return "00:00";
+  const totalSeconds = Math.floor(ms / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (days > 0) return `${days} ngày ${hours} giờ`;
+  if (hours > 0) return `${hours} giờ ${minutes} phút`;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+};
+
+const getResultScore = (result) => result?.total_score ?? result?.score ?? 0;
+
+const QuizPlayer = ({
+  quizId,
+  onComplete,
+  isOpen = true,
+  onClose = () => {},
+  displayMode = "inline",
+}) => {
   const [state, setState] = useState({
-    loading: false,
+    loading: true,
     submitting: false,
+    started: false,
     quiz: null,
     questions: [],
     answers: {},
     submitted: false,
     result: null,
-    error: '',
+    error: "",
+    canAttempt: true,
+    alreadyAttempted: false,
     timeRemaining: null,
-    isDeadlinePassed: false
+    isDeadlinePassed: false,
   });
-
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const startedAtRef = useRef(null);
   const cacheRef = useRef({});
-  const isModal = displayMode === 'modal';
+
+  const isModal = displayMode === "modal";
   const shouldRender = !isModal || isOpen;
+  const totalQuestions = state.questions.length;
+  const answeredCount = Object.keys(state.answers).length;
+  const unansweredCount = Math.max(totalQuestions - answeredCount, 0);
+  const currentQuestion = state.questions[currentIndex];
+  const progress = totalQuestions ? Math.round((answeredCount / totalQuestions) * 100) : 0;
+  const canSubmit =
+    state.canAttempt &&
+    !state.isDeadlinePassed &&
+    answeredCount === totalQuestions &&
+    totalQuestions > 0 &&
+    !state.submitting;
 
-  // Format time for display
-  const formatTime = (ms) => {
-    const seconds = Math.floor(ms / 1000);
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    if (hours >= 24) return `${Math.floor(hours / 24)}d ${hours % 24}h ${minutes}m`;
-    return `${hours}h ${minutes}m ${secs}s`;
-  };
+  const topics = useMemo(() => {
+    const unique = new Set(state.questions.map((q) => q.topic).filter(Boolean));
+    return Array.from(unique);
+  }, [state.questions]);
 
-  // Fetch quiz data
   useEffect(() => {
-    if (!quizId || !shouldRender) return;
-
-    let cancelled = false;
-    const fetchQuiz = async () => {
-      setState(prev => ({ ...prev, loading: true, error: '' }));
-
-      // Use cache if available
-      if (cacheRef.current[quizId]) {
-        const cached = cacheRef.current[quizId];
-        setState(prev => ({
+    if (!quizId || !shouldRender) {
+      if (!quizId) {
+        setState((prev) => ({
           ...prev,
           loading: false,
-          quiz: cached.quiz,
-          questions: cached.questions
+          error: "Thiếu mã quiz.",
         }));
+      }
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchQuiz = async () => {
+      setState((prev) => ({ ...prev, loading: true, error: "" }));
+
+      if (cacheRef.current[quizId]) {
+        const cached = cacheRef.current[quizId];
+        if (!cancelled) {
+          setState((prev) => ({ ...prev, loading: false, ...cached }));
+          setCurrentIndex(0);
+        }
         return;
       }
 
@@ -54,320 +126,491 @@ const QuizPlayer = ({ quizId, onComplete, isOpen = true, onClose = () => {}, dis
         const res = await taService.getQuizForStudent(quizId);
         if (cancelled) return;
 
-        if (res.success) {
-          const questions = (res.data.questions || []).map(q => ({
-            ...q,
-            options: typeof q.options === 'string' ? JSON.parse(q.options) : q.options
-          }));
-          cacheRef.current[quizId] = { quiz: res.data.quiz, questions };
-          setState(prev => ({
+        if (!res.success) {
+          setState((prev) => ({
             ...prev,
             loading: false,
-            quiz: res.data.quiz,
-            questions
+            error: res.error || "Không thể tải quiz.",
           }));
-        } else {
-          setState(prev => ({
-            ...prev,
-            loading: false,
-            error: res.error || 'Không thể tải quiz',
-            isDeadlinePassed: false,
-            timeRemaining: null
-          }));
+          return;
         }
+
+        const nextState = {
+          quiz: res.data.quiz,
+          questions: (res.data.questions || []).map((question) => ({
+            ...question,
+            options: normalizeOptions(question.options),
+          })),
+          canAttempt: res.data.can_attempt !== false,
+          alreadyAttempted: Boolean(res.data.already_attempted),
+        };
+
+        cacheRef.current[quizId] = nextState;
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          answers: {},
+          submitted: false,
+          result: null,
+          started: false,
+          ...nextState,
+        }));
+        setCurrentIndex(0);
       } catch (err) {
         if (!cancelled) {
-          setState(prev => ({
+          setState((prev) => ({
             ...prev,
             loading: false,
-            error: err.response?.data?.message || err.message || 'Có lỗi xảy ra',
-            isDeadlinePassed: false,
-            timeRemaining: null
+            error:
+              err.response?.data?.message ||
+              err.message ||
+              "Có lỗi xảy ra khi tải quiz.",
           }));
         }
       }
     };
 
     fetchQuiz();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [quizId, shouldRender]);
 
-  // Countdown timer
   useEffect(() => {
-    if (!state.quiz?.due_at || state.submitted) {
-      setState(prev => ({ ...prev, timeRemaining: null, isDeadlinePassed: false }));
+    if (!state.quiz?.due_at || state.submitted || state.alreadyAttempted) {
+      setState((prev) => ({
+        ...prev,
+        timeRemaining: null,
+        isDeadlinePassed: false,
+      }));
       return;
     }
 
     const update = () => {
       const remaining = new Date(state.quiz.due_at).getTime() - Date.now();
-      if (remaining <= 0) {
-        setState(prev => ({ ...prev, timeRemaining: null, isDeadlinePassed: true }));
-      } else {
-        setState(prev => ({ ...prev, timeRemaining: remaining, isDeadlinePassed: false }));
-      }
+      setState((prev) => ({
+        ...prev,
+        timeRemaining: remaining > 0 ? remaining : null,
+        isDeadlinePassed: remaining <= 0,
+      }));
     };
 
     update();
     const interval = setInterval(update, 1000);
     return () => clearInterval(interval);
-  }, [state.quiz?.due_at, state.submitted]);
+  }, [state.quiz?.due_at, state.submitted, state.alreadyAttempted]);
 
-  const answeredCount = Object.keys(state.answers).length;
-  const progress = state.questions.length ? (answeredCount / state.questions.length) * 100 : 0;
+  const startQuiz = () => {
+    if (!state.canAttempt || state.isDeadlinePassed || state.alreadyAttempted) return;
+    startedAtRef.current = Date.now();
+    setState((prev) => ({ ...prev, started: true }));
+  };
 
-  const handleSelectAnswer = (questionId, optionId) => {
-    if (state.isDeadlinePassed) return;
-    setState(prev => ({
+  const selectAnswer = (questionId, optionId) => {
+    if (!state.canAttempt || state.isDeadlinePassed || state.submitted) return;
+    setState((prev) => ({
       ...prev,
-      answers: { ...prev.answers, [questionId]: optionId }
+      answers: { ...prev.answers, [questionId]: optionId },
     }));
   };
 
-  const handleSubmit = async () => {
-    if (!state.questions.length || state.submitting || state.isDeadlinePassed) return;
+  const goToQuestion = (index) => {
+    if (index < 0 || index >= totalQuestions) return;
+    setCurrentIndex(index);
+  };
 
-    setState(prev => ({ ...prev, submitting: true }));
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
+
+    setState((prev) => ({ ...prev, submitting: true, error: "" }));
     try {
-      const answers = state.questions.map(q => ({
-        question_id: q.id,
-        selected_option: state.answers[q.id],
-        time_spent_seconds: 0
+      const elapsedSeconds = startedAtRef.current
+        ? Math.max(Math.round((Date.now() - startedAtRef.current) / 1000), 1)
+        : 0;
+      const perQuestionSeconds = Math.max(
+        Math.round(elapsedSeconds / totalQuestions),
+        1,
+      );
+
+      const answers = state.questions.map((question) => ({
+        question_id: question.id,
+        selected_option: state.answers[question.id],
+        time_spent_seconds: perQuestionSeconds,
       }));
 
       const res = await taService.submitQuizAttempt(quizId, { answers });
       if (res.success) {
-        setState(prev => ({
+        const result = res.data || res;
+        setState((prev) => ({
           ...prev,
+          submitting: false,
           submitted: true,
-          result: res.data || res
+          result,
+          canAttempt: false,
         }));
-        onComplete?.(res.data || res);
+        onComplete?.(result);
       } else {
-        setState(prev => ({ ...prev, error: res.error || 'Không thể nộp quiz' }));
+        setState((prev) => ({
+          ...prev,
+          submitting: false,
+          error: res.error || "Không thể nộp quiz.",
+        }));
       }
     } catch (err) {
-      const msg = err.response?.data?.message || err.message;
-      if (msg?.includes('quá hạn')) {
-        setState(prev => ({ ...prev, isDeadlinePassed: true, error: 'Đã quá hạn nộp bài.' }));
-      } else {
-        setState(prev => ({ ...prev, error: msg || 'Không thể nộp quiz' }));
-      }
-    } finally {
-      setState(prev => ({ ...prev, submitting: false }));
+      const message = err.response?.data?.message || err.message || "Không thể nộp quiz.";
+      setState((prev) => ({
+        ...prev,
+        submitting: false,
+        isDeadlinePassed: message.includes("quá hạn"),
+        error: message,
+      }));
     }
   };
 
-  // Shell component
-  const Shell = ({ children }) => {
-    if (!isModal) return <div className="animate-fade">{children}</div>;
+  const Shell = ({ children, className = "" }) => {
+    if (!isModal) {
+      return <section className={`quiz-player ${className}`}>{children}</section>;
+    }
+
     return (
-      <div style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0, 0, 0, 0.5)',
-        zIndex: 9999,
-        display: 'flex',
-        alignItems: 'flex-start',
-        justifyContent: 'center',
-        padding: '20px',
-        overflowY: 'auto'
-      }}>
-        <div style={{
-          background: 'var(--bg-primary)',
-          borderRadius: '12px',
-          width: '100%',
-          maxWidth: '900px',
-          minHeight: '100vh',
-          display: 'flex',
-          flexDirection: 'column'
-        }}>{children}</div>
+      <div className="quiz-modal-backdrop">
+        <section className={`quiz-player quiz-player-modal ${className}`}>
+          <button
+            type="button"
+            className="quiz-modal-close"
+            onClick={onClose}
+            aria-label="Đóng quiz"
+            title="Đóng"
+          >
+            <Icons.FiX size={18} />
+          </button>
+          {children}
+        </section>
       </div>
     );
   };
 
-  // Loading state
   if (!shouldRender) return null;
+
   if (state.loading) {
     return (
-      <Shell>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px' }}>
-          <Icons.FiRefreshCw className="spin" size={32} color="var(--primary)" />
-          <span style={{ marginLeft: '16px' }}>Đang tải quiz...</span>
-        </div>
+      <Shell className="quiz-player-center">
+        <Icons.FiRefreshCw className="quiz-spin" size={30} />
+        <p>Đang tải quiz...</p>
       </Shell>
     );
   }
 
-  // Error state
-  if (state.error || !state.quiz) {
+  if (state.error && !state.quiz) {
     return (
-      <Shell>
-        <div style={{ textAlign: 'center', padding: '60px' }}>
-          <Icons.FiAlertCircle size={48} color="var(--ta-red)" />
-          <p style={{ marginTop: '16px' }}>{state.error || 'Không thể tải quiz'}</p>
-          {isModal && <button className="ta-btn" onClick={onClose} style={{ marginTop: '16px' }}>Đóng</button>}
+      <Shell className="quiz-player-center">
+        <div className="quiz-empty-icon quiz-empty-danger">
+          <Icons.FiAlertCircle size={28} />
         </div>
+        <h2>Không thể tải quiz</h2>
+        <p>{state.error}</p>
+        {isModal && (
+          <button type="button" className="quiz-secondary-btn" onClick={onClose}>
+            Đóng
+          </button>
+        )}
       </Shell>
     );
   }
 
-  // No questions
-  if (!state.questions.length) {
+  if (!state.quiz || !totalQuestions) {
     return (
-      <Shell>
-        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border-primary)' }}>
-          <h3 style={{ margin: 0 }}>{state.quiz.title || 'Quiz'}</h3>
+      <Shell className="quiz-player-center">
+        <div className="quiz-empty-icon">
+          <Icons.FiFileText size={28} />
         </div>
-        <div style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
-          <Icons.FiFileText size={48} style={{ opacity: 0.35, marginBottom: '12px' }} />
-          <p>Quiz này chưa có câu hỏi.</p>
-        </div>
+        <h2>Quiz chưa có câu hỏi</h2>
+        <p>TA có thể đang chỉnh sửa nội dung trước khi mở cho học viên.</p>
       </Shell>
     );
   }
 
-  // Results view
-  if (state.submitted && state.result) {
+  if (state.alreadyAttempted && !state.submitted) {
     return (
       <Shell>
-        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border-primary)' }}>
-          <h3 style={{ margin: 0 }}>Kết quả Quiz</h3>
-        </div>
-        <div style={{ padding: '40px', textAlign: 'center' }}>
-          <div style={{
-            width: '112px', height: '112px', borderRadius: '50%',
-            background: state.result.passed ? 'var(--ta-green-bg)' : 'var(--ta-red-bg)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px'
-          }}>
-            {state.result.passed ? <Icons.FiCheckCircle size={60} color="var(--ta-green)" /> : <Icons.FiXCircle size={60} color="var(--ta-red)" />}
+        <div className="quiz-locked">
+          <div className="quiz-empty-icon quiz-empty-success">
+            <Icons.FiCheckCircle size={30} />
           </div>
-          <h2 style={{ margin: '0 0 8px' }}>{state.result.passed ? 'Bạn đã vượt qua' : 'Bạn chưa đạt yêu cầu'}</h2>
-          <p style={{ color: 'var(--text-muted)', margin: '0 0 24px' }}>
-            {state.result.passed ? 'Bạn đã hoàn thành tốt bài quiz.' : 'Hãy ôn tập và thử lại ở bài sau.'}
+          <p className="quiz-eyebrow">Đã hoàn thành</p>
+          <h2>{state.quiz.title || "Quiz"}</h2>
+          <p>
+            Bạn đã làm quiz này rồi. Mỗi học viên chỉ có một lượt nộp để kết quả
+            được công bằng.
           </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', maxWidth: '520px', margin: '0 auto 24px' }}>
-            <div style={{ padding: '18px', background: 'var(--bg-surface-tertiary)', borderRadius: '8px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Điểm số</div>
-              <div style={{ fontSize: '28px', fontWeight: 700, marginTop: '4px' }}>{state.result.total_score ?? state.result.score}%</div>
-            </div>
-            <div style={{ padding: '18px', background: 'var(--bg-surface-tertiary)', borderRadius: '8px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Tổng câu</div>
-              <div style={{ fontSize: '28px', fontWeight: 700, marginTop: '4px' }}>{state.result.total_questions || state.questions.length}</div>
-            </div>
-            <div style={{ padding: '18px', background: 'var(--bg-surface-tertiary)', borderRadius: '8px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Điểm đạt</div>
-              <div style={{ fontSize: '28px', fontWeight: 700, marginTop: '4px' }}>{state.quiz.passing_score || 60}%</div>
-            </div>
-          </div>
-          {isModal && <button className="vibrant-btn" onClick={onClose} style={{ padding: '12px 24px' }}><Icons.FiCheck /> Đóng</button>}
+          {isModal && (
+            <button type="button" className="quiz-primary-btn" onClick={onClose}>
+              Xong
+            </button>
+          )}
         </div>
       </Shell>
     );
   }
 
-  // Quiz player view - single page scroll
+  if (state.submitted && state.result) {
+    const score = getResultScore(state.result);
+    const passed = Boolean(state.result.passed);
+
+    return (
+      <Shell>
+        <div className="quiz-result">
+          <div className={`quiz-result-ring ${passed ? "is-pass" : "is-fail"}`}>
+            <span>{score}</span>
+            <small>điểm</small>
+          </div>
+
+          <p className="quiz-eyebrow">Kết quả bài làm</p>
+          <h2>{passed ? "Bạn đã vượt qua" : "Bạn chưa đạt yêu cầu"}</h2>
+          <p>
+            {passed
+              ? "Bài làm đã được ghi nhận. Bạn có thể quay lại lớp học để tiếp tục."
+              : "Bài làm đã được ghi nhận. Hãy xem lại phần bài giảng liên quan trước quiz tiếp theo."}
+          </p>
+
+          <div className="quiz-result-grid">
+            <div>
+              <span>Số câu đúng</span>
+              <strong>
+                {state.result.correct_count ?? "-"} /{" "}
+                {state.result.total_questions || totalQuestions}
+              </strong>
+            </div>
+            <div>
+              <span>Điểm cần đạt</span>
+              <strong>{state.quiz.passing_score || 60}</strong>
+            </div>
+            <div>
+              <span>Số lượt làm</span>
+              <strong>1</strong>
+            </div>
+          </div>
+
+          {isModal && (
+            <button type="button" className="quiz-primary-btn" onClick={onClose}>
+              <Icons.FiCheck size={17} />
+              Hoàn tất
+            </button>
+          )}
+        </div>
+      </Shell>
+    );
+  }
+
+  if (!state.started) {
+    return (
+      <Shell>
+        <div className="quiz-start">
+          <div className="quiz-start-content">
+            <p className="quiz-eyebrow">Sẵn sàng làm bài</p>
+            <h2>{state.quiz.title || "Quiz"}</h2>
+            {state.quiz.description && <p>{state.quiz.description}</p>}
+
+            <div className="quiz-start-meta">
+              <div>
+                <Icons.FiList size={18} />
+                <span>{totalQuestions} câu hỏi</span>
+              </div>
+              <div>
+                <Icons.FiAward size={18} />
+                <span>Cần {state.quiz.passing_score || 60} điểm</span>
+              </div>
+              <div>
+                <Icons.FiClock size={18} />
+                <span>{formatDeadline(state.quiz.due_at)}</span>
+              </div>
+            </div>
+
+            {topics.length > 0 && (
+              <div className="quiz-topic-strip">
+                {topics.slice(0, 5).map((topic) => (
+                  <span key={topic}>{topic}</span>
+                ))}
+              </div>
+            )}
+
+            {state.error && <div className="quiz-inline-error">{state.error}</div>}
+
+            <button
+              type="button"
+              className="quiz-primary-btn"
+              onClick={startQuiz}
+              disabled={!state.canAttempt || state.isDeadlinePassed}
+            >
+              <Icons.FiPlay size={18} />
+              Bắt đầu làm quiz
+            </button>
+          </div>
+
+          <aside className="quiz-start-panel">
+            <div className="quiz-rule">
+              <Icons.FiShield size={18} />
+              <div>
+                <strong>Một lượt nộp</strong>
+                <span>Sau khi nộp, bạn không thể làm lại.</span>
+              </div>
+            </div>
+            <div className="quiz-rule">
+              <Icons.FiCheckSquare size={18} />
+              <div>
+                <strong>Trắc nghiệm</strong>
+                <span>Chọn một đáp án cho mỗi câu.</span>
+              </div>
+            </div>
+            <div className="quiz-rule">
+              <Icons.FiBarChart2 size={18} />
+              <div>
+                <strong>Kết quả ngay</strong>
+                <span>Điểm số sẽ hiện sau khi nộp bài.</span>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </Shell>
+    );
+  }
+
   return (
     <Shell>
-      <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border-primary)', display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <h3 style={{ margin: 0, flex: 1 }}>{state.quiz.title || 'Quiz'}</h3>
-        {state.quiz.due_at && (
-          <span style={{
-            fontSize: '11px', padding: '4px 8px', borderRadius: '4px',
-            background: state.isDeadlinePassed ? 'var(--ta-red-bg)' : 'var(--ta-purple-bg)',
-            color: state.isDeadlinePassed ? 'var(--ta-red)' : 'var(--ta-purple)',
-            display: 'flex', alignItems: 'center', gap: '4px'
-          }}>
-            <Icons.FiClock size={10} />
-            {state.isDeadlinePassed ? 'Đã quá hạn' : `Nộp trước: ${new Date(state.quiz.due_at).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`}
-          </span>
-        )}
-        {isModal && <button className="ta-btn" onClick={onClose}><Icons.FiX size={16} /></button>}
-      </div>
-
-      <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
-        {/* Countdown timer */}
-        {state.quiz.due_at && !state.submitted && (
-          <div style={{
-            padding: '12px 16px', borderRadius: '8px', marginBottom: '20px', textAlign: 'center', fontWeight: 600, fontSize: '14px',
-            position: 'sticky', top: 0, zIndex: 10,
-            background: state.isDeadlinePassed ? 'var(--ta-red-bg)' : state.timeRemaining < 3600000 ? 'var(--ta-red-bg)' : 'var(--bg-surface-tertiary)',
-            color: state.isDeadlinePassed ? 'var(--ta-red)' : state.timeRemaining < 3600000 ? 'var(--ta-red)' : 'var(--ta-amber)'
-          }}>
-            {state.isDeadlinePassed ? '⏰ Đã quá hạn nộp bài' : `⏱️ Còn lại: ${formatTime(state.timeRemaining)}`}
+      <div className="quiz-session">
+        <aside className="quiz-sidebar">
+          <p className="quiz-eyebrow">Tiến độ</p>
+          <strong>{progress}%</strong>
+          <div className="quiz-progress-track" aria-hidden="true">
+            <div style={{ width: `${progress}%` }} />
           </div>
-        )}
+          <span>
+            Đã trả lời {answeredCount}/{totalQuestions} câu
+          </span>
 
-        {/* Progress bar */}
-        <div style={{ height: '8px', background: 'var(--bg-surface-tertiary)', borderRadius: '4px', marginBottom: '20px' }}>
-          <div style={{ width: `${progress}%`, height: '100%', background: 'var(--primary)', transition: 'width 0.3s ease' }} />
-        </div>
-        <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '20px' }}>
-          Đã trả lời {answeredCount}/{state.questions.length} câu
-        </div>
-
-        {/* Questions */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          {state.questions.map((q, idx) => (
-            <div key={q.id} className="ta-card-premium" style={{ padding: '24px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
-                <span className="ta-badge" style={{ fontSize: '11px', padding: '4px 8px' }}>Câu {idx + 1}</span>
-                <span className="ta-badge" style={{ fontSize: '11px', padding: '4px 8px' }}>{q.topic}</span>
-                <span className="ta-badge" style={{
-                  fontSize: '11px', padding: '4px 8px',
-                  backgroundColor: q.difficulty === 'easy' ? 'var(--ta-green-bg)' : q.difficulty === 'medium' ? 'var(--ta-amber-bg)' : 'var(--ta-red-bg)',
-                  color: q.difficulty === 'easy' ? 'var(--ta-green)' : q.difficulty === 'medium' ? 'var(--ta-amber)' : 'var(--ta-red)'
-                }}>
-                  {q.difficulty === 'easy' ? 'Dễ' : q.difficulty === 'medium' ? 'Trung bình' : 'Khó'}
-                </span>
-              </div>
-
-              <h3 style={{ margin: '0 0 20px', fontSize: '15px', fontWeight: 600, lineHeight: 1.5 }}>{q.question_text}</h3>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {(typeof q.options === 'string' ? JSON.parse(q.options) : q.options).map((opt, optIdx) => {
-                  const selected = state.answers[q.id] === opt.id;
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => handleSelectAnswer(q.id, opt.id)}
-                      style={{
-                        padding: '16px 20px', borderRadius: '8px',
-                        border: selected ? '2px solid var(--primary)' : '2px solid var(--border-primary)',
-                        background: selected ? 'var(--bg-surface-tertiary)' : 'var(--bg-surface)',
-                        display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', transition: 'all 0.2s ease', textAlign: 'left'
-                      }}
-                    >
-                      <span style={{
-                        width: '32px', height: '32px', borderRadius: '50%',
-                        background: selected ? 'var(--primary)' : 'var(--bg-surface-tertiary)',
-                        color: selected ? 'white' : 'var(--text-muted)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '13px', flexShrink: 0
-                      }}>
-                        {String.fromCharCode(65 + optIdx)}
-                      </span>
-                      <span style={{ fontSize: '14px', flex: 1 }}>{opt.text}</span>
-                      {selected && <Icons.FiCheckCircle size={20} color="var(--primary)" />}
-                    </button>
-                  );
-                })}
+          {state.quiz.due_at && (
+            <div
+              className={`quiz-deadline ${
+                state.isDeadlinePassed || (state.timeRemaining ?? Infinity) < 3600000
+                  ? "is-urgent"
+                  : ""
+              }`}
+            >
+              <Icons.FiClock size={16} />
+              <div>
+                <small>{state.isDeadlinePassed ? "Đã quá hạn" : "Còn lại"}</small>
+                <b>
+                  {state.isDeadlinePassed
+                    ? "Không thể nộp"
+                    : formatRemaining(state.timeRemaining)}
+                </b>
               </div>
             </div>
-          ))}
-        </div>
+          )}
 
-        {/* Submit button */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', marginTop: '32px', marginBottom: '40px' }}>
-          <button
-            className={answeredCount > 0 && !state.isDeadlinePassed ? 'vibrant-btn' : 'ta-btn'}
-            onClick={handleSubmit}
-            disabled={state.submitting || state.isDeadlinePassed}
-            style={{ padding: '16px 32px', fontSize: '15px' }}
-          >
-            {state.submitting ? <Icons.FiRefreshCw className="spin" /> : state.isDeadlinePassed ? 'Đã quá hạn' : <><Icons.FiCheckSquare /> Nộp bài</>}
-          </button>
-        </div>
+          <div className="quiz-question-map">
+            {state.questions.map((question, index) => {
+              const answered = Boolean(state.answers[question.id]);
+              const current = index === currentIndex;
+              return (
+                <button
+                  key={question.id}
+                  type="button"
+                  className={`${answered ? "is-answered" : ""} ${
+                    current ? "is-current" : ""
+                  }`}
+                  onClick={() => goToQuestion(index)}
+                  aria-label={`Câu ${index + 1}`}
+                >
+                  {index + 1}
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+
+        <section className="quiz-question-card">
+          <div className="quiz-question-header">
+            <div>
+              <span>Câu {currentIndex + 1}</span>
+              <span>{currentQuestion.topic || "Chung"}</span>
+              <span data-difficulty={currentQuestion.difficulty || "medium"}>
+                {difficultyLabel[currentQuestion.difficulty] || "Trung bình"}
+              </span>
+            </div>
+            <strong>
+              {currentIndex + 1}/{totalQuestions}
+            </strong>
+          </div>
+
+          <h2>{currentQuestion.question_text}</h2>
+
+          <div className="quiz-options">
+            {normalizeOptions(currentQuestion.options).map((option, optionIndex) => {
+              const selected = state.answers[currentQuestion.id] === option.id;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={selected ? "is-selected" : ""}
+                  onClick={() => selectAnswer(currentQuestion.id, option.id)}
+                >
+                  <span>{optionLetters[optionIndex] || option.id}</span>
+                  <p>{option.text}</p>
+                  {selected && <Icons.FiCheckCircle size={20} />}
+                </button>
+              );
+            })}
+          </div>
+
+          {state.error && <div className="quiz-inline-error">{state.error}</div>}
+
+          <footer className="quiz-footer">
+            <button
+              type="button"
+              className="quiz-secondary-btn"
+              onClick={() => goToQuestion(currentIndex - 1)}
+              disabled={currentIndex === 0}
+            >
+              <Icons.FiChevronLeft size={18} />
+              Câu trước
+            </button>
+
+            {currentIndex < totalQuestions - 1 ? (
+              <button
+                type="button"
+                className="quiz-primary-btn"
+                onClick={() => goToQuestion(currentIndex + 1)}
+              >
+                Câu tiếp
+                <Icons.FiChevronRight size={18} />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="quiz-primary-btn"
+                onClick={handleSubmit}
+                disabled={!canSubmit}
+                title={
+                  unansweredCount > 0
+                    ? `Còn ${unansweredCount} câu chưa trả lời`
+                    : "Nộp bài"
+                }
+              >
+                {state.submitting ? (
+                  <Icons.FiRefreshCw className="quiz-spin" size={18} />
+                ) : (
+                  <Icons.FiSend size={18} />
+                )}
+                {unansweredCount > 0
+                  ? `Còn ${unansweredCount} câu`
+                  : state.isDeadlinePassed
+                    ? "Đã quá hạn"
+                    : "Nộp bài"}
+              </button>
+            )}
+          </footer>
+        </section>
       </div>
     </Shell>
   );

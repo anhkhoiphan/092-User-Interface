@@ -188,8 +188,13 @@ function parseQuizMessage(content) {
     content.match(/^#?\s*(.+)$/m)?.[1]?.trim() ||
     "Quiz";
 
-  const questionCount = Number(content.match(/(\d+)\s*câu hỏi/i)?.[1] || 0);
-  const passingScore = Number(content.match(/Cần\s*(\d+)\s*điểm/i)?.[1] || 60);
+  const questionCount = Number(
+    content.match(/(\d+)\s*(?:câu hỏi|cau hoi|questions?)/i)?.[1] || 0,
+  );
+  const passingScore = Number(
+    content.match(/(?:Cần|Can|Need)\s*(\d+)\s*(?:điểm|diem|points?)/i)?.[1] ||
+      60,
+  );
 
   return {
     quizId,
