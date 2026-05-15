@@ -709,7 +709,7 @@ function ChatArea({
       console.log("[ChatArea] handleSend called:", { content: content.slice(0, 50), filesLen: files?.length, isDM, isSpaceRoom, room });
       if (!content.trim() && !files?.length) return;
 
-      if (isDM) {
+      if (isDM && !isSpaceRoom) {
         // Guard: prevent chatting with self
         if (dmUser?.id && dmUser.id === currentUser?.id) {
           console.warn("Cannot send message to yourself");
