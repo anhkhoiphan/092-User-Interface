@@ -706,7 +706,7 @@ function ChatArea({
   // Handle send message via WebSocket
   const handleSend = useCallback(
     async (content, replyToMsg, files) => {
-      if (!content.trim()) return;
+      if (!content.trim() && !files?.length) return;
 
       if (isDM) {
         // Guard: prevent chatting with self
@@ -957,42 +957,21 @@ function ChatArea({
         const msgTempId = `temp-${Date.now()}`;
         const contentTrimmed = content.trim();
 
-        // Upload file first if present
-        let attachment = null;
+        // Build optimistic attachments from local preview (immediate, no upload yet)
         let optimisticAttachments = [];
         if (files?.length > 0) {
           const fileObj = files[0];
-          // Show preview immediately in optimistic message
-          if (fileObj.preview || fileObj.file) {
-            const previewUrl = fileObj.preview || URL.createObjectURL(fileObj.file);
-            const isPdf =
-              fileObj.file?.type === "application/pdf" ||
-              (fileObj.name || "").toLowerCase().endsWith(".pdf");
+          const previewUrl = fileObj.preview || (fileObj.file ? URL.createObjectURL(fileObj.file) : null);
+          if (previewUrl) {
             optimisticAttachments = [{
               file_name: fileObj.name || fileObj.file?.name || "file",
               file_type: fileObj.file?.type || "",
               file_url: previewUrl,
-              previewUrl,
             }];
-          }
-          try {
-            const uploadRes = await messageService.uploadFileToStorage(fileObj.file, { roomId: room });
-            const fileData = uploadRes.data?.data || uploadRes.data;
-            attachment = {
-              file_url: fileData.fileUrl || fileData.file_url,
-              file_name: fileData.fileName || fileData.file_name || fileObj.name,
-              file_type: fileData.fileType || fileData.file_type,
-              file_size: fileData.fileSize || fileData.file_size,
-              mime_type: fileData.mimeType || fileData.mime_type,
-            };
-            // Update optimistic preview with real URL
-            optimisticAttachments = [{ ...attachment }];
-          } catch (err) {
-            console.error("[ChatArea] File upload failed:", err);
           }
         }
 
-        // Optimistic UI - same format as DM
+        // Optimistic UI — dispatch IMMEDIATELY before any async work
         const optimisticMsg = {
           id: msgTempId,
           sender: {
@@ -1032,7 +1011,26 @@ function ChatArea({
 
         dispatch(addMessage({ roomId: room, message: optimisticMsg }));
 
-        // Send with tempId (and attachment if uploaded) so BE can echo it back
+        // Upload file if present (after optimistic dispatch)
+        let attachment = null;
+        if (files?.length > 0) {
+          try {
+            const fileObj = files[0];
+            const uploadRes = await messageService.uploadFileToStorage(fileObj.file, { roomId: room });
+            const fileData = uploadRes.data?.data || uploadRes.data;
+            attachment = {
+              file_url: fileData.fileUrl || fileData.file_url,
+              file_name: fileData.fileName || fileData.file_name || fileObj.name,
+              file_type: fileData.fileType || fileData.file_type,
+              file_size: fileData.fileSize || fileData.file_size,
+              mime_type: fileData.mimeType || fileData.mime_type,
+            };
+          } catch (err) {
+            console.error("[ChatArea] File upload failed:", err);
+          }
+        }
+
+        // Send via WebSocket (with real URL if upload succeeded)
         socketService.sendMessage({ roomId: room, content: contentTrimmed, tempId: msgTempId, attachment });
 
         if (files?.length > 0 && /@StudyBot/i.test(contentTrimmed)) {
