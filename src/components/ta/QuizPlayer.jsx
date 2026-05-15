@@ -96,7 +96,7 @@ const QuizPlayer = ({ quizId, onComplete, isOpen = true, onClose = () => {}, dis
       if (remaining <= 0) {
         setState(prev => ({ ...prev, timeRemaining: null, isDeadlinePassed: true }));
       } else {
-        setState(prev => ({ ...prev, timeRemaining, isDeadlinePassed: false }));
+        setState(prev => ({ ...prev, timeRemaining: remaining, isDeadlinePassed: false }));
       }
     };
 
