@@ -808,21 +808,6 @@ ${compileRules(g.rules)}
                     const res = await taService.uploadSlide(selectedSpaces[0], file);
                     if (res.success) {
                       setUploadedFile({ ...res.data, rawFile: file });
-                      // Index PDF vào Qdrant (background, không blocking)
-                      (async () => {
-                        try {
-                          const indexRes = await taService.indexPdf(selectedSpaces[0], `room-${selectedSpaces[0]}`, file);
-                          if (indexRes.success) {
-                            console.log('[Slide] Indexed', indexRes.chunksIndexed, 'chunks');
-                          } else {
-                            console.warn('[Slide] Index failed:', indexRes.error);
-                          }
-                        } catch (err) {
-                          console.error('[Slide] Index failed:', err);
-                          // Thông báo người dùng: file đã upload nhưng index thất bại
-                          addToast('Slide đã tải lên nhưng không index được vào tìm kiếm', 'error');
-                        }
-                      })();
                     }
                   } catch (error) {
                     console.error('handleFileUpload error:', error);

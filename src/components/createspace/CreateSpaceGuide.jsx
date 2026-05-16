@@ -16,21 +16,24 @@ function CreateSpaceGuide({ onTabChange }) {
     {
       icon: FiUserPlus,
       title: "Tạo Agent",
-      desc: "Tạo agent mới",
+      desc: "Coming soon",
       tab: "agent",
+      disabled: true,
     },
     {
       icon: FiUsers,
       title: "Quản lý Agent",
-      desc: "Xem và quản lý các agent",
+      desc: "Coming soon",
       tab: "manageAgent",
+      disabled: true,
     },
   ];
 
-  const handleClick = (tab) => {
-    setActiveTab(tab);
+  const handleClick = (item) => {
+    if (item.disabled) return;
+    setActiveTab(item.tab);
     if (onTabChange) {
-      onTabChange(tab);
+      onTabChange(item.tab);
     }
   };
 
@@ -60,22 +63,27 @@ function CreateSpaceGuide({ onTabChange }) {
           return (
             <div
               key={item.title}
-              className="p-3 rounded-lg cursor-pointer flex items-start gap-3"
+              className="p-3 rounded-lg flex items-start gap-3"
               style={{
                 background: isActive
                   ? "var(--primary-active)"
                   : "transparent",
                 color: isActive ? "var(--primary)" : "var(--text-primary)",
+                cursor: item.disabled ? "not-allowed" : "pointer",
+                opacity: item.disabled ? 0.55 : 1,
               }}
               onMouseEnter={(e) => {
-                if (!isActive)
+                if (!isActive && !item.disabled) {
                   e.currentTarget.style.background = "var(--hover-primary)";
+                }
               }}
               onMouseLeave={(e) => {
-                if (!isActive)
+                if (!isActive && !item.disabled) {
                   e.currentTarget.style.background = "transparent";
+                }
               }}
-              onClick={() => handleClick(item.tab)}
+              onClick={() => handleClick(item)}
+              aria-disabled={item.disabled}
             >
               <IconComponent size={18} className="mt-0.5 flex-shrink-0" />
               <div>

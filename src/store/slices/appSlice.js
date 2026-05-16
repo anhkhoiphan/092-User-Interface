@@ -40,6 +40,7 @@ const appSlice = createSlice({
     navigateToSpace: (state, action) => {
       state.activeView = "space";
       state.activeSpace = action.payload;
+      state.activeRoom = null;
       state.isSettings = false;
     },
     navigateToMessages: (state) => {
