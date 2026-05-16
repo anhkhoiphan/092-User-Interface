@@ -47,12 +47,13 @@ const TADashboard = () => {
     : atRiskList.filter(item => item.space_id === selectedSpaceFilter);
 
   // Metrics (use filtered list for charts)
-  const criticalCountArr = filteredAtRiskList.filter(i => i.level === 'critical' || (i.metadata?.score || 0) >= 5);
-  const warningCountArr = filteredAtRiskList.filter(i => i.level === 'warning' || ((i.metadata?.score || 0) >= 2 && (i.metadata?.score || 0) < 5));
+  // Use backend-level level field directly - trust backend classification
+  const criticalItems = filteredAtRiskList.filter(i => i.level === 'critical');
+  const warningItems = filteredAtRiskList.filter(i => i.level === 'warning');
   const filteredActionLogs = selectedSpaceFilter === 'all'
     ? actionLogs
     : actionLogs.filter(log => log.space_id === selectedSpaceFilter);
-  const resolvedCountArr = filteredActionLogs.filter(l => l.action_type === 'dismissed_alert' || l.action_type === 'sent_dm');
+  const resolvedItems = filteredActionLogs.filter(l => l.action_type === 'dismissed_alert' || l.action_type === 'sent_dm');
   const timeSavedVal = filteredActionLogs.reduce((acc, log) => {
     switch (log.action_type) {
       case 'lesson_recap': return acc + 30;
@@ -64,9 +65,9 @@ const TADashboard = () => {
   }, 0);
 
   const finalChartData = [
-    { name: 'Nguy hiểm', value: criticalCountArr.length, color: 'var(--ta-red)' },
-    { name: 'Cảnh báo', value: warningCountArr.length, color: 'var(--ta-amber)' },
-    { name: 'Đã xử lý', value: resolvedCountArr.length, color: 'var(--ta-green)' },
+    { name: 'Nguy hiểm', value: criticalItems.length, color: 'var(--ta-red)' },
+    { name: 'Cảnh báo', value: warningItems.length, color: 'var(--ta-amber)' },
+    { name: 'Đã xử lý', value: resolvedItems.length, color: 'var(--ta-green)' },
   ];
 
   const [toasts, setToasts] = useState([]);
@@ -700,8 +701,8 @@ ${compileRules(g.rules)}
           {activeTab === 'at-risk' && (
             <div className="animate-fade">
               <div className="metrics-grid">
-                <div className="stat-card critical"><span className="stat-label">Rủi ro Nghiêm trọng</span><div className="stat-value">{criticalCountArr.length} <span>học viên</span></div></div>
-                <div className="stat-card warning"><span className="stat-label">Cần chú ý</span><div className="stat-value">{warningCountArr.length} <span>học viên</span></div></div>
+                <div className="stat-card critical"><span className="stat-label">Rủi ro Nghiêm trọng</span><div className="stat-value">{criticalItems.length} <span>học viên</span></div></div>
+                <div className="stat-card warning"><span className="stat-label">Cần chú ý</span><div className="stat-value">{warningItems.length} <span>học viên</span></div></div>
                 <div className="stat-card success"><span className="stat-label">Tiết kiệm thời gian</span><div className="stat-value">{timeSavedVal} <span>phút/tuần</span></div></div>
               </div>
 
@@ -825,7 +826,7 @@ ${compileRules(g.rules)}
                         let resAgent;
                         if (uploadedFile && uploadedFile.rawFile) {
                           console.log('[Recap] Calling agent WITH file:', uploadedFile.rawFile.name, uploadedFile.rawFile.size, 'bytes');
-                          resAgent = await taService.callAgentWithFile(selectedSpaces[0], prompt, user?.id || 'TA', uploadedFile.rawFile);
+                          resAgent = await taService.callAgentWithFile(selectedSpaces[0], prompt, uploadedFile.rawFile);
                         } else {
                           console.log('[Recap] Calling agent WITHOUT file');
                           resAgent = await taService.callAgentChat(selectedSpaces[0], prompt, user?.id || 'TA');
@@ -869,7 +870,7 @@ ${compileRules(g.rules)}
                     let resAgent;
                     if (uploadedFile && uploadedFile.rawFile) {
                       console.log('[Recap] Calling agent WITH file:', uploadedFile.rawFile.name, uploadedFile.rawFile.size, 'bytes');
-                      resAgent = await taService.callAgentWithFile(selectedSpaces[0], prompt, user?.id || 'TA', uploadedFile.rawFile);
+                      resAgent = await taService.callAgentWithFile(selectedSpaces[0], prompt, uploadedFile.rawFile);
                     } else {
                       console.log('[Recap] Calling agent WITHOUT file');
                       resAgent = await taService.callAgentChat(selectedSpaces[0], prompt, user?.id || 'TA');
