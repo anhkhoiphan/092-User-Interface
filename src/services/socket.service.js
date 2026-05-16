@@ -27,7 +27,7 @@ class SocketService {
       auth: (cb) => {
         cb({ token: localStorage.getItem("access_token") });
       },
-      transports: ["websocket", "polling"],
+      transports: ["polling", "websocket"],
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionAttempts: 5,
