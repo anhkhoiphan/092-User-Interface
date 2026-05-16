@@ -115,6 +115,7 @@ const QuizWorkflow = ({ quizId, spaceId, onBack, onSave, onSend, onViewResults }
     description: quiz.description,
     status: quiz.status,
     passing_score: quiz.passing_score || 60,
+    due_at: quiz.due_at || null,
     questions: questions.map(toQuestionPayload)
   });
 
@@ -170,14 +171,14 @@ const QuizWorkflow = ({ quizId, spaceId, onBack, onSave, onSend, onViewResults }
   };
 
   const handleDelete = async () => {
-    if (!confirm('Bạn có chắc muốn xóa quiz này? Hành động này không thể hoàn tác.')) return;
+    if (!confirm('Bạn có chắc muốn lưu trữ quiz này? Quiz sẽ không hiển thị cho học viên nữa nhưng có thể khôi phục sau.')) return;
 
     setSaving(true);
     try {
       await taService.updateQuiz(quizId, { ...buildPayload(), status: 'archived' });
       onBack?.();
     } catch (error) {
-      console.error('Failed to delete quiz:', error);
+      console.error('Failed to archive quiz:', error);
     } finally {
       setSaving(false);
     }
@@ -239,8 +240,8 @@ const QuizWorkflow = ({ quizId, spaceId, onBack, onSave, onSend, onViewResults }
           <button className="vibrant-btn" onClick={handleSend} disabled={saving} style={{ padding: '10px 16px' }}>
             <Icons.FiSend />
           </button>
-          <button className="ta-btn" onClick={handleDelete} disabled={saving} style={{ padding: '10px 16px', color: 'var(--ta-red)' }} title="Xóa quiz">
-            <Icons.FiTrash2 size={16} />
+          <button className="ta-btn" onClick={handleDelete} disabled={saving} style={{ padding: '10px 16px', color: 'var(--ta-red)' }} title="Lưu trữ quiz">
+            <Icons.FiArchive size={16} />
           </button>
           {quiz?.status === 'published' && typeof onViewResults === 'function' && (
             <button className="ta-btn" onClick={() => onViewResults(quizId)} style={{ padding: '10px 16px' }}>
@@ -286,6 +287,17 @@ const QuizWorkflow = ({ quizId, spaceId, onBack, onSave, onSend, onViewResults }
               />
               <span style={{ fontSize: '24px', fontWeight: 700, color: 'var(--primary)', fontFamily: 'inherit' }}>%</span>
             </div>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px', fontFamily: 'inherit' }}>Hạn nộp</label>
+            <input
+              className="ta-input"
+              type="datetime-local"
+              value={quiz.due_at || ''}
+              onChange={(e) => setQuiz({ ...quiz, due_at: e.target.value || null })}
+              placeholder="Chọn hạn nộp..."
+            />
+            <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>Để trống nếu không giới hạn</div>
           </div>
           <div>
             <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px', fontFamily: 'inherit' }}>Trạng thái</label>

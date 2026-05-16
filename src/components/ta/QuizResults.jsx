@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import * as Icons from 'react-icons/fi';
-import { BarChart, Bar, Cell, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
+import { BarChart, Bar, Cell, ResponsiveContainer, XAxis, YAxis, Tooltip, PieChart, Pie, Legend } from 'recharts';
 import taService from '../../services/ta.service';
 
 const QuizResults = ({ quizId, onBack }) => {
@@ -9,6 +9,7 @@ const QuizResults = ({ quizId, onBack }) => {
   const [summary, setSummary] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [attempts, setAttempts] = useState([]);
+  const [detailAttempt, setDetailAttempt] = useState(null);
 
   useEffect(() => {
     if (quizId) {
@@ -213,14 +214,27 @@ const QuizResults = ({ quizId, onBack }) => {
         <div className="ta-card-premium" style={{ padding: '20px' }}>
           <h3 style={{ margin: '0 0 6px', fontSize: '14px' }}>Phân vùng điểm học viên</h3>
           <p style={{ margin: '0 0 16px', fontSize: '12px', color: 'var(--text-muted)' }}>
-            Mỗi cột là số học viên nằm trong khoảng điểm tương ứng.
+            Biểu đồ tròn phân bố điểm của học viên.
           </p>
           {attempts.length > 0 ? (
             <div style={{ height: '250px' }}>
               <ResponsiveContainer>
-                <BarChart data={getScoreDistributionData()} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
-                  <XAxis dataKey="label" />
-                  <YAxis allowDecimals={false} />
+                <PieChart>
+                  <Pie
+                    data={getScoreDistributionData()}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ label, percent }) => `${label}: ${(percent * 100).toFixed(0)}%`}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="count"
+                  >
+                    {getScoreDistributionData().map((entry) => (
+                      <Cell key={entry.label} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Legend />
                   <Tooltip
                     formatter={(value) => [value, 'Học viên']}
                     contentStyle={{
@@ -229,12 +243,7 @@ const QuizResults = ({ quizId, onBack }) => {
                       borderRadius: '8px'
                     }}
                   />
-                  <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                    {getScoreDistributionData().map((entry) => (
-                      <Cell key={entry.label} fill={entry.color} />
-                    ))}
-                  </Bar>
-                </BarChart>
+                </PieChart>
               </ResponsiveContainer>
             </div>
           ) : (
@@ -307,14 +316,17 @@ const QuizResults = ({ quizId, onBack }) => {
                     background: 'var(--bg-surface-tertiary)',
                     borderRadius: '12px',
                     display: 'grid',
-                    gridTemplateColumns: '2fr 1fr 1fr 1fr',
+                    gridTemplateColumns: '2fr 1fr 1fr 1fr auto',
                     alignItems: 'center',
-                    gap: '12px'
+                    gap: '12px',
+                    cursor: 'pointer',
+                    transition: 'background 0.2s'
                   }}
+                  onClick={() => setDetailAttempt(attempt)}
                 >
                   <div style={{ fontWeight: 600 }}>{attempt.user?.display_name || 'Học viên'}</div>
                   <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                    {new Date(attempt.submitted_at).toLocaleDateString('vi-VN')}
+                    {new Date(attempt.submitted_at).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                   </div>
                   <div style={{ textAlign: 'center' }}>
                     <span
@@ -333,6 +345,9 @@ const QuizResults = ({ quizId, onBack }) => {
                   <div style={{ textAlign: 'center', fontSize: '13px', color: 'var(--text-muted)' }}>
                     {correctCount}/{totalQuestions} câu đúng
                   </div>
+                  <div style={{ display: 'flex', justifyContent: 'center' }}>
+                    <Icons.FiChevronRight size={20} color="var(--text-muted)" />
+                  </div>
                 </div>
               );
             })}
@@ -344,6 +359,184 @@ const QuizResults = ({ quizId, onBack }) => {
           </div>
         )}
       </div>
+
+      {/* Attempt Detail Modal */}
+      {detailAttempt && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}
+          onClick={() => setDetailAttempt(null)}
+        >
+          <div
+            style={{
+              background: 'var(--bg-primary)',
+              borderRadius: '12px',
+              maxWidth: '800px',
+              maxHeight: '90vh',
+              width: '100%',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: '20px', borderBottom: '1px solid var(--border-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px' }}>Chi tiết lần làm</h3>
+                <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
+                  {detailAttempt.user?.display_name} - Nộp lúc {new Date(detailAttempt.submitted_at).toLocaleString('vi-VN')}
+                </p>
+              </div>
+              <button className="ta-btn" onClick={() => setDetailAttempt(null)} style={{ padding: '4px 8px' }}>
+                <Icons.FiX size={16} />
+              </button>
+            </div>
+            <div style={{ padding: '20px', overflowY: 'auto' }}>
+              {(() => {
+                const { score, correctCount } = getAttemptScore(detailAttempt);
+                const passed = score >= (quiz.passing_score || 60);
+                const totalQuestions = questions.length;
+
+                const getDifficultyColor = (difficulty) => {
+                  switch (difficulty) {
+                    case 'easy': return 'var(--ta-green)';
+                    case 'medium': return 'var(--ta-amber)';
+                    case 'hard': return 'var(--ta-red)';
+                    default: return 'var(--text-muted)';
+                  }
+                };
+
+                const getDifficultyBg = (difficulty) => {
+                  switch (difficulty) {
+                    case 'easy': return 'var(--ta-green-bg)';
+                    case 'medium': return 'var(--ta-amber-bg)';
+                    case 'hard': return 'var(--ta-red-bg)';
+                    default: return 'var(--bg-surface-tertiary)';
+                  }
+                };
+
+                const normalizeOptions = (options) => {
+                  if (Array.isArray(options)) return options;
+                  if (typeof options === 'string') {
+                    try {
+                      const parsed = JSON.parse(options);
+                      return Array.isArray(parsed) ? parsed : [];
+                    } catch {
+                      return [];
+                    }
+                  }
+                  return [];
+                };
+
+                return (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '24px' }}>
+                      <div style={{ padding: '16px', background: 'var(--bg-surface-tertiary)', borderRadius: '8px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Điểm số</div>
+                        <div style={{ fontSize: '24px', fontWeight: 700, marginTop: '4px', color: 'var(--primary)' }}>{score}%</div>
+                      </div>
+                      <div style={{ padding: '16px', background: 'var(--bg-surface-tertiary)', borderRadius: '8px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Câu đúng</div>
+                        <div style={{ fontSize: '24px', fontWeight: 700, marginTop: '4px', color: 'var(--ta-green)' }}>{correctCount}/{totalQuestions}</div>
+                      </div>
+                      <div style={{ padding: '16px', background: 'var(--bg-surface-tertiary)', borderRadius: '8px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Điểm đạt</div>
+                        <div style={{ fontSize: '24px', fontWeight: 700, marginTop: '4px', color: 'var(--ta-amber)' }}>{quiz.passing_score || 60}%</div>
+                      </div>
+                      <div style={{ padding: '16px', background: 'var(--bg-surface-tertiary)', borderRadius: '8px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Kết quả</div>
+                        <div style={{ fontSize: '24px', fontWeight: 700, marginTop: '4px', color: passed ? 'var(--ta-green)' : 'var(--ta-red)' }}>
+                          {passed ? 'ĐẠT' : 'KHÔNG ĐẠT'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <h4 style={{ margin: '0 0 16px', fontSize: '14px' }}>Chi tiết từng câu</h4>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      {detailAttempt.answers.map((ans, ansIdx) => {
+                        const question = questions.find((q) => q.id === ans.question_id);
+                        if (!question) return null;
+                        const isCorrect = ans.selected_option === question.correct_answer;
+                        const selectedOption = normalizeOptions(question.options).find((o) => o.id === ans.selected_option);
+                        const correctOption = normalizeOptions(question.options).find((o) => o.id === question.correct_answer);
+
+                        return (
+                          <div
+                            key={ans.question_id || ansIdx}
+                            style={{
+                              padding: '16px',
+                              background: 'var(--bg-surface-tertiary)',
+                              borderRadius: '8px',
+                              border: `2px solid ${isCorrect ? 'var(--ta-green)' : 'var(--ta-red)'}`
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                              <span
+                                style={{
+                                  width: '28px',
+                                  height: '28px',
+                                  borderRadius: '50%',
+                                  background: isCorrect ? 'var(--ta-green-bg)' : 'var(--ta-red-bg)',
+                                  color: isCorrect ? 'var(--ta-green)' : 'var(--ta-red)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontWeight: 700,
+                                  fontSize: '12px'
+                                }}
+                              >
+                                {ansIdx + 1}
+                              </span>
+                              <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: getDifficultyBg(question.difficulty), color: getDifficultyColor(question.difficulty), textTransform: 'uppercase', fontWeight: 600 }}>
+                                {question.difficulty === 'easy' ? 'Dễ' : question.difficulty === 'medium' ? 'Trung bình' : 'Khó'}
+                              </span>
+                              <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'var(--bg-surface)', color: 'var(--text-muted)' }}>
+                                {question.topic}
+                              </span>
+                            </div>
+                            <p style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: 500 }}>{question.question_text}</p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <div style={{ padding: '12px', background: isCorrect ? 'var(--ta-green-bg)' : 'var(--ta-red-bg)', borderRadius: '6px' }}>
+                                <div style={{ fontSize: '11px', fontWeight: 700, marginBottom: '4px', color: isCorrect ? 'var(--ta-green)' : 'var(--ta-red)' }}>
+                                  <Icons.FiCheckCircle size={12} style={{ verticalAlign: 'middle', marginRight: '4px' }} />
+                                  Câu trả lời của bạn
+                                </div>
+                                <div style={{ fontSize: '13px' }}>{selectedOption?.text || 'Không có'}</div>
+                              </div>
+                              {!isCorrect && (
+                                <div style={{ padding: '12px', background: 'var(--ta-green-bg)', borderRadius: '6px' }}>
+                                  <div style={{ fontSize: '11px', fontWeight: 700, marginBottom: '4px', color: 'var(--ta-green)' }}>
+                                    <Icons.FiInfo size={12} style={{ verticalAlign: 'middle', marginRight: '4px' }} />
+                                    Đáp án đúng
+                                  </div>
+                                  <div style={{ fontSize: '13px' }}>{correctOption?.text || 'Không có'}</div>
+                                </div>
+                              )}
+                              {question.explanation && (
+                                <div style={{ padding: '12px', background: 'var(--bg-surface)', borderRadius: '6px', fontSize: '13px', color: 'var(--text-muted)', border: '1px solid var(--border-primary)' }}>
+                                  <strong>Giải thích:</strong> {question.explanation}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
